@@ -1,0 +1,197 @@
+import { io } from 'socket.io-client';
+
+class SocketService {
+  constructor() {
+    this.socket = null;
+    this.isConnected = false;
+    this.gameCode = null;
+    this.playerName = null;
+    this.isHost = false;
+  }
+
+  connect() {
+    if (this.socket) return;
+    
+    this.socket = io('http://localhost:3001', {
+      autoConnect: true
+    });
+
+    this.socket.on('connect', () => {
+      console.log('Connected to server');
+      this.isConnected = true;
+    });
+
+    this.socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+      this.isConnected = false;
+    });
+
+    this.socket.on('connect_error', (error) => {
+      console.error('Connection error:', error);
+    });
+
+    this.socket.on('error', (error) => {
+      console.error('Socket error:', error);
+    });
+  }
+
+  createGame(playerName, gameMode, gameCode) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.playerName = playerName;
+      this.gameCode = gameCode;
+      this.isHost = true;
+
+      this.socket.emit('createGame', {
+        playerName,
+        gameMode,
+        gameCode
+      });
+
+      this.socket.once('gameCreated', (data) => {
+        resolve(data);
+      });
+
+      this.socket.once('createError', (error) => {
+        reject(error);
+      });
+    });
+  }
+
+  joinGame(playerName, gameCode) {
+    return new Promise((resolve, reject) => {
+      console.log('SocketService joinGame called:', { playerName, gameCode });
+      
+      if (!this.socket) {
+        console.error('Socket not connected');
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      this.playerName = playerName;
+      this.gameCode = gameCode;
+      this.isHost = false;
+
+      console.log('Emitting joinGame event');
+      this.socket.emit('joinGame', {
+        playerName,
+        gameCode
+      });
+
+      this.socket.once('gameJoined', (data) => {
+        console.log('Received gameJoined event:', data);
+        resolve(data);
+      });
+
+      this.socket.once('joinError', (error) => {
+        console.error('Received joinError event:', error);
+        reject(error);
+      });
+
+      // Add timeout to prevent hanging
+      setTimeout(() => {
+        reject(new Error('Join game timeout'));
+      }, 10000);
+    });
+  }
+
+  startGame() {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.isHost) {
+        reject(new Error('Not host or not connected'));
+        return;
+      }
+
+      this.socket.emit('startGame', {
+        gameCode: this.gameCode
+      });
+
+      this.socket.once('gameStarted', (data) => {
+        resolve(data);
+      });
+
+      this.socket.once('startError', (error) => {
+        reject(error);
+      });
+    });
+  }
+
+  onPlayerJoined(callback) {
+    this.socket?.on('playerJoined', callback);
+  }
+
+  onPlayerLeft(callback) {
+    this.socket?.on('playerLeft', callback);
+  }
+
+  onHostChanged(callback) {
+    this.socket?.on('hostChanged', callback);
+  }
+
+  onGameStarted(callback) {
+    this.socket?.on('gameStarted', callback);
+  }
+
+  onGameReadyToStart(callback) {
+    this.socket?.on('gameReadyToStart', callback);
+  }
+
+  sendGameMove(move, args) {
+    if (this.socket && this.gameCode) {
+      console.log('SocketService sending game move:', { gameCode: this.gameCode, move, args });
+      this.socket.emit('gameMove', {
+        gameCode: this.gameCode,
+        move,
+        args
+      });
+    }
+  }
+
+  onGameMove(callback) {
+    this.socket?.on('gameMove', callback);
+  }
+
+  onGameStateUpdate(callback) {
+    this.socket?.on('gameStateUpdate', (data) => {
+      console.log('SocketService received gameStateUpdate:', data);
+      callback(data);
+    });
+  }
+
+  onMoveError(callback) {
+    this.socket?.on('moveError', callback);
+  }
+
+  requestGameState() {
+    if (this.socket && this.gameCode) {
+      console.log('Requesting game state for game:', this.gameCode);
+      this.socket.emit('requestGameState', {
+        gameCode: this.gameCode
+      });
+    }
+  }
+
+  // Force start game (for debugging)
+  forceStartGame() {
+    if (this.socket && this.gameCode) {
+      console.log('Force starting game:', this.gameCode);
+      this.socket.emit('startGame', {
+        gameCode: this.gameCode
+      });
+    }
+  }
+
+  disconnect() {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+      this.isConnected = false;
+    }
+  }
+}
+
+export default new SocketService();
