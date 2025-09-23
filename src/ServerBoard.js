@@ -136,51 +136,110 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
     }
   };
 
+  // Determine flex direction based on player position
+  const getFlexDirection = () => {
+    switch (position) {
+      case 'top':
+        return 'column'; // Player info above, played card below
+      case 'bottom':
+        return 'column-reverse'; // Played card above, player info below
+      case 'left':
+        return 'row'; // Player info left, played card right
+      case 'right':
+        return 'row-reverse'; // Played card left, player info right
+      default:
+        return 'column';
+    }
+  };
+
   return (
-    <div style={getPlayerStyle(position)}>
-      {/* Player Name and Score */}
-      <div style={{
-        fontSize: '12px',
-        fontWeight: 'bold',
-        marginBottom: position === 'top' || position === 'bottom' ? '5px' : (window.innerWidth < 768 ? '5px' : '0'),
-        marginRight: position === 'left' || position === 'right' ? (window.innerWidth < 768 ? '0' : '10px') : '0',
-        color: isCurrentPlayerTurn ? '#2196F3' : '#fff',
-        textAlign: 'center'
-      }}>
-        <div>{player.playerName}</div>
-        <div style={{ fontSize: '10px', opacity: 0.8 }}>
-          Score: {gameState.scores[player.playerId] || 0}
-        </div>
-        {isCurrentPlayerTurn && <div style={{ fontSize: '10px' }}>(Your Turn)</div>}
-      </div>
-      
-      {/* Player Cards */}
+    <div style={{
+      position: 'absolute',
+      display: 'flex',
+      flexDirection: getFlexDirection(),
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '10px',
+      zIndex: 10,
+      ...(position === 'top' ? {
+        top: '60px',
+        left: '50%',
+        transform: 'translateX(-50%)'
+      } : position === 'right' ? {
+        right: '10px',
+        top: '50%',
+        transform: 'translateY(-50%)'
+      } : position === 'bottom' ? {
+        bottom: '10px',
+        left: '50%',
+        transform: 'translateX(-50%)'
+      } : position === 'left' ? {
+        left: '10px',
+        top: '50%',
+        transform: 'translateY(-50%)'
+      } : {})
+    }}>
+      {/* Main Player Area */}
       <div style={{
         display: 'flex',
-        flexDirection: position === 'top' || position === 'bottom' ? 'row' : (window.innerWidth < 768 ? 'column' : 'column'),
-        gap: '3px',
-        alignItems: 'center'
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: isCurrentPlayerTurn ? 'rgba(33, 150, 243, 0.3)' : 'rgba(0, 0, 0, 0.2)',
+        borderRadius: '8px',
+        border: isCurrentPlayerTurn ? '2px solid #2196F3' : '1px solid rgba(255, 255, 255, 0.3)',
+        padding: '5px'
       }}>
-        {playerHand.map((card, index) => (
-          <Card
-            key={`${card.id}-${index}`}
-            card={card}
-            onClick={() => onCardClick(player.playerId, index)}
-            isPlayable={isCurrentPlayerTurn && isOwnPlayer}
-            isHidden={!isOwnPlayer}
-          />
-        ))}
+        {/* Player Name and Score */}
+        <div style={{
+          fontSize: '12px',
+          fontWeight: 'bold',
+          marginBottom: position === 'top' || position === 'bottom' ? '5px' : (window.innerWidth < 768 ? '5px' : '0'),
+          marginRight: position === 'left' || position === 'right' ? (window.innerWidth < 768 ? '0' : '10px') : '0',
+          color: isCurrentPlayerTurn ? '#2196F3' : '#fff',
+          textAlign: 'center',
+          maxWidth: '120px',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }}>
+          <div style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}>{player.playerName.length > 12 ? player.playerName.substring(0, 8) + '...' : player.playerName}</div>
+          <div style={{ fontSize: '10px', opacity: 0.8 }}>
+            Score: {gameState.scores[player.playerId] || 0}
+          </div>
+          {isCurrentPlayerTurn && <div style={{ fontSize: '10px' }}>(Your Turn)</div>}
+        </div>
+        
+        {/* Player Cards */}
+        <div style={{
+          display: 'flex',
+          flexDirection: position === 'top' || position === 'bottom' ? 'row' : (window.innerWidth < 768 ? 'column' : 'column'),
+          gap: '3px',
+          alignItems: 'center'
+        }}>
+          {playerHand.map((card, index) => (
+            <Card
+              key={`${card.id}-${index}`}
+              card={card}
+              onClick={() => onCardClick(player.playerId, index)}
+              isPlayable={isCurrentPlayerTurn && isOwnPlayer}
+              isHidden={!isOwnPlayer}
+            />
+          ))}
+        </div>
       </div>
       
       {/* Played Card Display */}
       {playedCard && (
         <div style={{
-          marginTop: position === 'top' || position === 'bottom' ? '10px' : '0',
-          marginLeft: position === 'left' ? '10px' : '0',
-          marginRight: position === 'right' ? '10px' : '0',
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center'
+          alignItems: 'center',
+          margin: '10px'
         }}>
           <div style={{
             fontSize: '10px',
