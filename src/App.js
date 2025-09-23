@@ -132,7 +132,7 @@ function App() {
       
       const result = await socketService.createGame(name, mode, gameCode);
       setGameConfig({
-        mode,
+        mode: mode === 'teams' ? 'teams' : 'individual',
         gameCode,
         isHost: true,
         players: result.players || []
@@ -158,7 +158,7 @@ function App() {
       setGameConfig({
         gameCode: code,
         isHost: false,
-        mode: result.gameMode,
+        mode: result.gameMode === 'teams' ? 'teams' : 'individual',
         players: result.players || []
       });
       setPlayers(result.players || []);
@@ -227,29 +227,145 @@ function App() {
                 padding: '5px',
                 backgroundColor: player.isHost ? 'rgba(76, 175, 80, 0.3)' : 'rgba(255, 255, 255, 0.1)',
                 margin: '5px 0',
-                borderRadius: '4px'
+                borderRadius: '4px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
               }}>
-                {player.name} {player.isHost ? '(Host)' : ''}
+                <span>{player.name} {player.isHost ? '(Host)' : ''}</span>
+                {gameConfig.mode === 'teams' && players.length === 4 && (
+                  <div style={{ fontSize: '12px' }}>
+                    {player.team ? (
+                      <span style={{ 
+                        color: player.team === 'team1' ? '#4CAF50' : '#2196F3',
+                        fontWeight: 'bold'
+                      }}>
+                        Team {player.team === 'team1' ? '1' : '2'}
+                      </span>
+                    ) : (
+                      <span style={{ color: '#ff9800' }}>Selecting team...</span>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
+
+          {/* Team Selection for team games */}
+          {gameConfig.mode === 'teams' && (
+            <div style={{
+              margin: '20px 0',
+              padding: '15px',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: '8px'
+            }}>
+              <h4>Team Selection</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <h5 style={{ color: '#4CAF50', margin: '5px 0' }}>Team 1</h5>
+                  <div style={{ fontSize: '12px' }}>
+                    {players.filter(p => p.team === 'team1').map(p => p.name).join(', ') || 'Empty'}
+                  </div>
+                </div>
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <h5 style={{ color: '#2196F3', margin: '5px 0' }}>Team 2</h5>
+                  <div style={{ fontSize: '12px' }}>
+                    {players.filter(p => p.team === 'team2').map(p => p.name).join(', ') || 'Empty'}
+                  </div>
+                </div>
+              </div>
+              
+              {players.length < 4 ? (
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ marginBottom: '10px', fontSize: '14px', color: '#ff9800' }}>
+                    Waiting for {4 - players.length} more player{4 - players.length === 1 ? '' : 's'} to join...
+                  </p>
+                </div>
+              ) : !players.find(p => p.socketId === socketService.socket?.id)?.team ? (
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ marginBottom: '10px', fontSize: '14px' }}>Choose your team:</p>
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                    <button
+                      onClick={() => socketService.selectTeam('team1')}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#4CAF50',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        fontSize: '14px'
+                      }}
+                    >
+                      Join Team 1
+                    </button>
+                    <button
+                      onClick={() => socketService.selectTeam('team2')}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#2196F3',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        fontSize: '14px'
+                      }}
+                    >
+                      Join Team 2
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ marginBottom: '10px', fontSize: '14px', color: '#4CAF50' }}>
+                    All players have selected teams! Host can start the game.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           
           {gameConfig.isHost && (
             <button
               onClick={handleStartPlaying}
-              disabled={connectionStatus === 'starting' || players.length < 2 || (gameConfig.mode === 'teams' && (!gameReadyToStart || players.length < 4))}
+              disabled={
+                connectionStatus === 'starting' || 
+                players.length < 2 || 
+                (gameConfig.mode === 'teams' && (
+                  !gameReadyToStart || 
+                  players.length < 4 || 
+                  players.some(p => !p.team)
+                ))
+              }
               style={{
                 padding: '15px 30px',
                 fontSize: '18px',
-                backgroundColor: (connectionStatus === 'starting' || players.length < 2 || (gameConfig.mode === 'teams' && (!gameReadyToStart || players.length < 4))) ? '#666' : '#4CAF50',
+                backgroundColor: (
+                  connectionStatus === 'starting' || 
+                  players.length < 2 || 
+                  (gameConfig.mode === 'teams' && (
+                    !gameReadyToStart || 
+                    players.length < 4 || 
+                    players.some(p => !p.team)
+                  ))
+                ) ? '#666' : '#4CAF50',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
-                cursor: (connectionStatus === 'starting' || players.length < 2 || (gameConfig.mode === 'teams' && (!gameReadyToStart || players.length < 4))) ? 'not-allowed' : 'pointer',
+                cursor: (
+                  connectionStatus === 'starting' || 
+                  players.length < 2 || 
+                  (gameConfig.mode === 'teams' && (
+                    !gameReadyToStart || 
+                    players.length < 4 || 
+                    players.some(p => !p.team)
+                  ))
+                ) ? 'not-allowed' : 'pointer',
                 marginTop: '20px'
               }}
             >
               {connectionStatus === 'starting' ? 'Starting...' : 
+               (gameConfig.mode === 'teams' && players.some(p => !p.team)) ? 'Waiting for Team Selection...' :
                (gameConfig.mode === 'teams' && (!gameReadyToStart || players.length < 4)) ? 'Waiting for Players...' : 
                'Start Game'}
             </button>

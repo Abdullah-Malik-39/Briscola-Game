@@ -37,7 +37,7 @@ function Menu({ onStartGame, onJoinGame }) {
       backgroundColor: '#1a4d3a',
       color: 'white',
       fontFamily: 'Arial, sans-serif',
-      padding: '20px',
+      padding: '30px',
       boxSizing: 'border-box'
     }}>
       <div style={{
@@ -116,10 +116,10 @@ function Menu({ onStartGame, onJoinGame }) {
                   2 Players
                 </button>
                 <button
-                  onClick={() => setGameMode('4player')}
+                  onClick={() => setGameMode('teams')}
                   style={{
                     padding: window.innerWidth < 768 ? '15px' : '10px 20px',
-                    backgroundColor: gameMode === '4player' ? '#4CAF50' : 'rgba(255, 255, 255, 0.2)',
+                    backgroundColor: gameMode === 'teams' ? '#4CAF50' : 'rgba(255, 255, 255, 0.2)',
                     color: 'white',
                     border: 'none',
                     borderRadius: '8px',
@@ -129,7 +129,7 @@ function Menu({ onStartGame, onJoinGame }) {
                     width: window.innerWidth < 768 ? '100%' : 'auto'
                   }}
                 >
-                  4 Players
+                  4 Players (Teams)
                 </button>
               </div>
             </div>
@@ -183,13 +183,14 @@ function Menu({ onStartGame, onJoinGame }) {
               onChange={(e) => setGameCode(e.target.value)}
               style={{
                 width: '100%',
-                padding: '12px',
-                fontSize: '16px',
+                padding: window.innerWidth < 768 ? '15px' : '12px',
+                fontSize: window.innerWidth < 768 ? '18px' : '16px',
                 border: 'none',
                 borderRadius: '8px',
                 marginBottom: '15px',
                 backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                color: '#333'
+                color: '#333',
+                boxSizing: 'border-box'
               }}
             />
             

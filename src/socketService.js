@@ -185,6 +185,17 @@ class SocketService {
     }
   }
 
+  // Select team for 4-player games
+  selectTeam(team) {
+    if (this.socket && this.gameCode) {
+      console.log('Selecting team:', team);
+      this.socket.emit('selectTeam', {
+        gameCode: this.gameCode,
+        team
+      });
+    }
+  }
+
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();

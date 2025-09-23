@@ -347,6 +347,28 @@ io.on('connection', (socket) => {
       return;
     }
     
+    // For 4-player team games, validate team selection
+    if (gameState.players.size === 4 && gameState.gameMode === 'teams') {
+      const playerList = Array.from(gameState.players.values());
+      const allPlayersHaveTeams = playerList.every(p => p.team);
+      
+      if (!allPlayersHaveTeams) {
+        console.log('Not all players have selected teams');
+        socket.emit('startError', { message: 'All players must select teams before starting' });
+        return;
+      }
+      
+      // Validate team balance (2 players per team)
+      const team1Count = playerList.filter(p => p.team === 'team1').length;
+      const team2Count = playerList.filter(p => p.team === 'team2').length;
+      
+      if (team1Count !== 2 || team2Count !== 2) {
+        console.log('Teams not balanced:', { team1Count, team2Count });
+        socket.emit('startError', { message: 'Teams must be balanced (2 players per team)' });
+        return;
+      }
+    }
+    
     // Mark game as started
     gameState.gameStarted = true;
     
@@ -363,6 +385,16 @@ io.on('connection', (socket) => {
     playerArray.forEach((player, index) => {
       gameState.gameState.playerNames[index] = player.playerName;
     });
+    
+    // Set team assignments in game state for team games
+    if (gameState.gameMode === 'teams') {
+      playerArray.forEach((player, index) => {
+        if (player.team) {
+          gameState.gameState.teams[index] = player.team;
+        }
+      });
+      console.log('Team assignments set:', gameState.gameState.teams);
+    }
     
     console.log(`Game ${gameCode} started with ${gameState.players.size} players`);
     console.log('Game state initialized:', JSON.stringify(gameState.gameState, null, 2));
@@ -408,6 +440,53 @@ io.on('connection', (socket) => {
     socket.emit('gameStateUpdate', {
       gameState: gameState.gameState
     });
+  });
+
+  // Team selection for 4-player games
+  socket.on('selectTeam', (data) => {
+    const { gameCode, team } = data;
+    const gameState = games.get(gameCode);
+    const playerInfo = players.get(socket.id);
+    
+    if (!gameState || !playerInfo) {
+      socket.emit('teamSelectionError', { message: 'Game not found or player not found' });
+      return;
+    }
+    
+    if (gameState.gameMode !== 'teams') {
+      socket.emit('teamSelectionError', { message: 'Team selection only available for team games' });
+      return;
+    }
+    
+    // Update player team
+    playerInfo.team = team;
+    
+    // Update game state teams if game state exists
+    if (gameState.gameState) {
+      const playerId = playerInfo.playerId;
+      gameState.gameState.teams[playerId] = team;
+    }
+    
+    console.log(`Player ${playerInfo.playerName} selected team ${team}`);
+    console.log('Updated player info:', playerInfo);
+    
+    // Broadcast updated player list to all players
+    const playerList = Array.from(gameState.players.values());
+    console.log('Broadcasting updated player list:', playerList.map(p => ({ name: p.playerName, team: p.team })));
+    
+    io.to(gameCode).emit('playerJoined', {
+      players: playerList,
+      playerCount: playerList.length
+    });
+    
+    // Check if all players have selected teams
+    const allPlayersHaveTeams = playerList.every(p => p.team);
+    if (allPlayersHaveTeams) {
+      console.log('All players have selected teams, game ready to start');
+      io.to(gameCode).emit('gameReadyToStart', {
+        message: 'All players have selected teams'
+      });
+    }
   });
 
   // Game move
@@ -524,11 +603,18 @@ io.on('connection', (socket) => {
           const trickPoints = calculateTeamPoints(game.currentTrick);
           game.scores[winningPlayer] += trickPoints;
           
+          console.log(`Trick completed: Player ${winningPlayer} won ${trickPoints} points`);
+          console.log(`Game mode: ${game.gameMode}, Teams:`, game.teams);
+          console.log(`Current team scores before update:`, game.teamScores);
+          
           // Update team scores for 4-player mode
           if (game.gameMode === 'teams' && game.teams[winningPlayer]) {
             const team = game.teams[winningPlayer];
             const teamIndex = team === 'team1' ? 0 : 1;
             game.teamScores[teamIndex] += trickPoints;
+            console.log(`Team score updated: Player ${winningPlayer} (${team}) won ${trickPoints} points. Team scores:`, game.teamScores);
+          } else {
+            console.log(`Team score not updated: gameMode=${game.gameMode}, teams=${JSON.stringify(game.teams)}, winningPlayer=${winningPlayer}`);
           }
           
           // Clear current trick

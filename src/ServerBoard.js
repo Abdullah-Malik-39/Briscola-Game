@@ -209,7 +209,15 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
             whiteSpace: 'nowrap'
           }}>{player.playerName.length > 12 ? player.playerName.substring(0, 8) + '...' : player.playerName}</div>
           <div style={{ fontSize: '10px', opacity: 0.8 }}>
-            Score: {gameState.scores[player.playerId] || 0}
+            {gameState.gameMode === 'teams' ? (
+              <span>
+                Team Score: {gameState.teamScores ? 
+                  (gameState.teams[player.playerId] === 'team1' ? gameState.teamScores[0] : gameState.teamScores[1]) : 0
+                }
+              </span>
+            ) : (
+              <span>Score: {gameState.scores[player.playerId] || 0}</span>
+            )}
           </div>
           {isCurrentPlayerTurn && <div style={{ fontSize: '10px' }}>(Your Turn)</div>}
         </div>
@@ -301,6 +309,14 @@ export function ServerBoard({ gameState, players, playerID }) {
 
   // Debug logging
   console.log('ServerBoard render:', { gameState, players, playerID, localGameState });
+  if (localGameState && localGameState.gameMode === 'teams') {
+    console.log('Team game debug:', {
+      gameMode: localGameState.gameMode,
+      teamScores: localGameState.teamScores,
+      teams: localGameState.teams,
+      scores: localGameState.scores
+    });
+  }
 
   if (!localGameState) {
     return (
@@ -403,11 +419,22 @@ export function ServerBoard({ gameState, players, playerID }) {
           gap: window.innerWidth < 768 ? '5px' : '10px',
           fontSize: window.innerWidth < 768 ? '9px' : '12px'
         }}>
-          {localGameState.scores.map((score, index) => (
-            <span key={index}>
-              P{index}: {score}
-            </span>
-          ))}
+          {localGameState.gameMode === 'teams' ? (
+            <>
+              <span style={{ color: '#4CAF50' }}>
+                Team 1: {localGameState.teamScores ? localGameState.teamScores[0] : 0}
+              </span>
+              <span style={{ color: '#2196F3' }}>
+                Team 2: {localGameState.teamScores ? localGameState.teamScores[1] : 0}
+              </span>
+            </>
+          ) : (
+            localGameState.scores.map((score, index) => (
+              <span key={index}>
+                P{index}: {score}
+              </span>
+            ))
+          )}
         </div>
       </div>
 
@@ -516,17 +543,42 @@ export function ServerBoard({ gameState, players, playerID }) {
           {/* Final Scores */}
           <div style={{ fontSize: '18px', marginBottom: '20px' }}>
             <div style={{ marginBottom: '15px', fontWeight: 'bold' }}>Final Scores:</div>
-            {localGameState.scores.map((score, index) => (
-              <div key={index} style={{ 
-                margin: '5px 0',
-                padding: '8px 15px',
-                backgroundColor: index === playerID ? 'rgba(33, 150, 243, 0.3)' : 'rgba(255, 255, 255, 0.1)',
-                borderRadius: '8px',
-                border: index === playerID ? '2px solid #2196F3' : '1px solid rgba(255, 255, 255, 0.3)'
-              }}>
-                {localGameState.playerNames[index] || `Player ${index}`}: {score} points
+            {localGameState.gameMode === 'teams' ? (
+              <div>
+                <div style={{ 
+                  margin: '5px 0',
+                  padding: '8px 15px',
+                  backgroundColor: 'rgba(76, 175, 80, 0.3)',
+                  borderRadius: '8px',
+                  border: '2px solid #4CAF50',
+                  color: '#4CAF50'
+                }}>
+                  Team 1: {localGameState.teamScores ? localGameState.teamScores[0] : 0} points
+                </div>
+                <div style={{ 
+                  margin: '5px 0',
+                  padding: '8px 15px',
+                  backgroundColor: 'rgba(33, 150, 243, 0.3)',
+                  borderRadius: '8px',
+                  border: '2px solid #2196F3',
+                  color: '#2196F3'
+                }}>
+                  Team 2: {localGameState.teamScores ? localGameState.teamScores[1] : 0} points
+                </div>
               </div>
-            ))}
+            ) : (
+              localGameState.scores.map((score, index) => (
+                <div key={index} style={{ 
+                  margin: '5px 0',
+                  padding: '8px 15px',
+                  backgroundColor: index === playerID ? 'rgba(33, 150, 243, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                  borderRadius: '8px',
+                  border: index === playerID ? '2px solid #2196F3' : '1px solid rgba(255, 255, 255, 0.3)'
+                }}>
+                  {localGameState.playerNames[index] || `Player ${index}`}: {score} points
+                </div>
+              ))
+            )}
           </div>
 
           {/* Winner/Loser Message */}
@@ -534,11 +586,24 @@ export function ServerBoard({ gameState, players, playerID }) {
             fontSize: '20px', 
             marginBottom: '25px',
             fontWeight: 'bold',
-            color: localGameState.scores[playerID] === Math.max(...localGameState.scores) ? '#4CAF50' : '#f44336'
+            color: localGameState.gameMode === 'teams' ? 
+              (localGameState.teamScores && localGameState.teams[playerID] === 'team1' ? 
+                (localGameState.teamScores[0] > localGameState.teamScores[1] ? '#4CAF50' : '#f44336') :
+                (localGameState.teamScores && localGameState.teams[playerID] === 'team2' ? 
+                  (localGameState.teamScores[1] > localGameState.teamScores[0] ? '#4CAF50' : '#f44336') : '#f44336')
+              ) :
+              (localGameState.scores[playerID] === Math.max(...localGameState.scores) ? '#4CAF50' : '#f44336')
           }}>
-            {localGameState.scores[playerID] === Math.max(...localGameState.scores) ? 
-              '🏆 You Win! 🏆' : '😞 You Lost 😞'
-            }
+            {localGameState.gameMode === 'teams' ? (
+              localGameState.teamScores && localGameState.teams[playerID] ? (
+                (localGameState.teams[playerID] === 'team1' && localGameState.teamScores[0] > localGameState.teamScores[1]) ||
+                (localGameState.teams[playerID] === 'team2' && localGameState.teamScores[1] > localGameState.teamScores[0]) ?
+                  '🏆 Your Team Won! 🏆' : '😞 Your Team Lost 😞'
+              ) : '😞 Game Over 😞'
+            ) : (
+              localGameState.scores[playerID] === Math.max(...localGameState.scores) ? 
+                '🏆 You Win! 🏆' : '😞 You Lost 😞'
+            )}
           </div>
 
           {/* Back to Menu Button */}
