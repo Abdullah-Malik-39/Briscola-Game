@@ -1,3 +1,28 @@
+# Deployment Env
+
+Create a `.env` for local dev (React):
+
+```
+REACT_APP_API_URL=http://localhost:3001
+REACT_APP_SOCKET_URL=http://localhost:3001
+```
+
+Create a `.env.production` for Vercel:
+
+```
+REACT_APP_API_URL=https://your-backend.example.com
+REACT_APP_SOCKET_URL=https://your-backend.example.com
+```
+
+Server environment variables:
+
+```
+PORT=3001
+HOST=0.0.0.0
+PERSISTENT_STORAGE_FILE=/data/persistent_games.json
+```
+
+On Render/Railway, mount a persistent volume and set `PERSISTENT_STORAGE_FILE` to a path on that volume.
 # Briscola Card Game
 
 A multiplayer Briscola card game built with React and boardgame.io, following the same structure as the Tic-Tac-Toe tutorial.

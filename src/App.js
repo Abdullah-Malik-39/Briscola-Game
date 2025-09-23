@@ -46,7 +46,8 @@ function App() {
       console.log('Checking for existing games with playerName:', playerName);
       
       // Use new single-game-per-user API
-      const response = await fetch(`http://localhost:3001/api/user/${encodeURIComponent(playerName)}/game`);
+      const API = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+      const response = await fetch(`${API}/api/user/${encodeURIComponent(playerName)}/game`);
       if (response.ok) {
         const gameData = await response.json();
         console.log('Found user game:', gameData);
@@ -245,7 +246,8 @@ function App() {
       const checkGameStatus = async () => {
         try {
           console.log('Checking game status via API...');
-          const response = await fetch(`http://localhost:3001/api/games/${gameConfig.gameCode}`);
+          const API = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+          const response = await fetch(`${API}/api/games/${gameConfig.gameCode}`);
           const data = await response.json();
           console.log('Game status from API:', data);
           
@@ -758,7 +760,8 @@ function App() {
           onClick={async () => {
             console.log('Getting game state from API...');
             try {
-              const response = await fetch(`http://localhost:3001/api/games/${gameConfig.gameCode}`);
+              const API = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+              const response = await fetch(`${API}/api/games/${gameConfig.gameCode}`);
               const data = await response.json();
               console.log('API response:', data);
               if (data.gameState) {
@@ -784,7 +787,8 @@ function App() {
           onClick={async () => {
             console.log('Force starting game via API...');
             try {
-              const response = await fetch(`http://localhost:3001/api/games/${gameConfig.gameCode}/start`, {
+              const API = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+              const response = await fetch(`${API}/api/games/${gameConfig.gameCode}/start`, {
                 method: 'POST'
               });
               const data = await response.json();

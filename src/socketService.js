@@ -12,7 +12,9 @@ class SocketService {
   connect() {
     if (this.socket) return;
     
-    this.socket = io('http://localhost:3001', {
+    const API = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+    const SOCKET = process.env.REACT_APP_SOCKET_URL || API;
+    this.socket = io(SOCKET, {
       autoConnect: true
     });
 
@@ -204,7 +206,8 @@ class SocketService {
   // Check for user's active games
   async getUserGames(socketId) {
     try {
-      const response = await fetch(`http://localhost:3001/api/user/${socketId}/games`);
+      const API = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+      const response = await fetch(`${API}/api/user/${socketId}/games`);
       const data = await response.json();
       return data.games;
     } catch (error) {
@@ -216,7 +219,8 @@ class SocketService {
   // Check for user's active games by player name
   async getUserGamesByName(playerName) {
     try {
-      const response = await fetch(`http://localhost:3001/api/user/name/${encodeURIComponent(playerName)}/games`);
+      const API = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+      const response = await fetch(`${API}/api/user/name/${encodeURIComponent(playerName)}/games`);
       
       if (!response.ok) {
         console.log(`Server returned ${response.status} for player ${playerName}`);
@@ -234,7 +238,8 @@ class SocketService {
   // Restore game from persistent storage
   async restoreGame(gameCode, socketId) {
     try {
-      const response = await fetch(`http://localhost:3001/api/games/${gameCode}/restore`, {
+      const API = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+      const response = await fetch(`${API}/api/games/${gameCode}/restore`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -252,7 +257,8 @@ class SocketService {
   // Make offline move
   async makeOfflineMove(gameCode, socketId, playerId, move, args) {
     try {
-      const response = await fetch(`http://localhost:3001/api/games/${gameCode}/move`, {
+      const API = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+      const response = await fetch(`${API}/api/games/${gameCode}/move`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

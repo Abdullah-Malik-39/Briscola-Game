@@ -113,7 +113,7 @@ const userGames = new Map(); // normalized playerName -> gameCode
 
 // Persistent game storage (in production, use a database)
 const persistentGames = new Map(); // gameCode -> persistentGameData
-const PERSISTENT_STORAGE_FILE = 'persistent_games.json';
+const PERSISTENT_STORAGE_FILE = process.env.PERSISTENT_STORAGE_FILE || 'persistent_games.json';
 
 // Load persistent games from file on startup
 function loadPersistentGamesFromFile() {
