@@ -80,6 +80,9 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
   const isOwnPlayer = player.playerId === playerID;
   const playerHand = gameState.hands[player.playerId] || [];
   
+  // Find the card this player played in the current trick
+  const playedCard = gameState.currentTrick.find(card => card.player === player.playerId);
+  
   const getPlayerPosition = (playerId) => {
     const positions = {
       0: 'top',    // North
@@ -93,10 +96,11 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
   const position = getPlayerPosition(player.playerId);
   
   const getPlayerStyle = (pos) => {
+    const isMobile = window.innerWidth < 768;
     const baseStyle = {
       position: 'absolute',
       display: 'flex',
-      flexDirection: pos === 'top' || pos === 'bottom' ? 'column' : 'row',
+      flexDirection: pos === 'top' || pos === 'bottom' ? 'column' : (isMobile ? 'column' : 'row'),
       alignItems: 'center',
       justifyContent: 'center',
       padding: '10px',
@@ -110,11 +114,23 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
       case 'top':
         return { ...baseStyle, top: '60px', left: '50%', transform: 'translateX(-50%)' };
       case 'right':
-        return { ...baseStyle, right: '10px', top: '50%', transform: 'translateY(-50%)' };
+        return { 
+          ...baseStyle, 
+          right: '10px', 
+          top: '50%', 
+          transform: 'translateY(-50%)',
+          flexDirection: isMobile ? 'column' : 'row'
+        };
       case 'bottom':
         return { ...baseStyle, bottom: '10px', left: '50%', transform: 'translateX(-50%)' };
       case 'left':
-        return { ...baseStyle, left: '10px', top: '50%', transform: 'translateY(-50%)' };
+        return { 
+          ...baseStyle, 
+          left: '10px', 
+          top: '50%', 
+          transform: 'translateY(-50%)',
+          flexDirection: isMobile ? 'column' : 'row'
+        };
       default:
         return baseStyle;
     }
@@ -126,8 +142,8 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
       <div style={{
         fontSize: '12px',
         fontWeight: 'bold',
-        marginBottom: position === 'top' || position === 'bottom' ? '5px' : '0',
-        marginRight: position === 'left' || position === 'right' ? '10px' : '0',
+        marginBottom: position === 'top' || position === 'bottom' ? '5px' : (window.innerWidth < 768 ? '5px' : '0'),
+        marginRight: position === 'left' || position === 'right' ? (window.innerWidth < 768 ? '0' : '10px') : '0',
         color: isCurrentPlayerTurn ? '#2196F3' : '#fff',
         textAlign: 'center'
       }}>
@@ -141,7 +157,7 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
       {/* Player Cards */}
       <div style={{
         display: 'flex',
-        flexDirection: position === 'top' || position === 'bottom' ? 'row' : 'column',
+        flexDirection: position === 'top' || position === 'bottom' ? 'row' : (window.innerWidth < 768 ? 'column' : 'column'),
         gap: '3px',
         alignItems: 'center'
       }}>
@@ -155,6 +171,32 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
           />
         ))}
       </div>
+      
+      {/* Played Card Display */}
+      {playedCard && (
+        <div style={{
+          marginTop: position === 'top' || position === 'bottom' ? '10px' : '0',
+          marginLeft: position === 'left' ? '10px' : '0',
+          marginRight: position === 'right' ? '10px' : '0',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center'
+        }}>
+          <div style={{
+            fontSize: '10px',
+            color: 'rgba(255, 255, 255, 0.8)',
+            marginBottom: '5px',
+            textAlign: 'center'
+          }}>
+            Played:
+          </div>
+          <Card
+            card={playedCard}
+            isPlayed={true}
+            isHidden={false}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -326,22 +368,12 @@ export function ServerBoard({ gameState, players, playerID }) {
           position: 'relative',
           marginBottom: '20px'
         }}>
-          {/* Deck pile */}
-          <div style={{
-            width: window.innerWidth < 768 ? '45px' : '60px',
-            height: window.innerWidth < 768 ? '68px' : '90px',
-            backgroundImage: 'url(/cards/cardBack.png)',
-            backgroundSize: 'cover',
-            borderRadius: '6px',
-            border: '2px solid #333',
-            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
-            position: 'relative'
-          }} />
+          
           
           {/* Trump card sticking out */}
           <div style={{
             position: 'absolute',
-            top: window.innerWidth < 768 ? '-12px' : '-15px',
+            top: window.innerWidth < 768 ? '-15px' : '-20px',
             left: '50%',
             transform: 'translateX(-50%)',
             width: window.innerWidth < 768 ? '45px' : '60px',
@@ -351,28 +383,43 @@ export function ServerBoard({ gameState, players, playerID }) {
             borderRadius: '6px',
             border: '2px solid #ff6b35',
             boxShadow: '0 6px 12px rgba(0,0,0,0.4)',
-            zIndex: 2
+            zIndex: 0
           }} />
+
+           {/* Deck pile */}
+           <div style={{
+             width: window.innerWidth < 768 ? '50px' : '66px',
+             height: window.innerWidth < 768 ? '68px' : '90px',
+             backgroundImage: 'url(/cards/cardBack.png)',
+             backgroundSize: 'cover',
+             borderRadius: '2px',
+             border: '2px solid #333',
+             boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+             position: 'relative',
+             transform: 'rotate(90deg)'
+           }} />
         </div>
 
-        {/* Played Cards in Center */}
-        <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          justifyContent: 'center',
-          gap: '10px',
-          minWidth: '200px',
-          minHeight: '100px',
-          alignItems: 'center'
-        }}>
-          {localGameState.currentTrick.map((card, index) => (
-            <Card
-              key={`trick-${card.id}-${index}`}
-              card={card}
-              isPlayed={true}
-            />
-          ))}
-        </div>
+        {/* Played Cards in Center - Only show if no cards played yet */}
+        {localGameState.currentTrick.length === 0 && (
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            gap: '10px',
+            minWidth: '200px',
+            minHeight: '100px',
+            alignItems: 'center'
+          }}>
+            <div style={{
+              color: 'rgba(255, 255, 255, 0.6)',
+              fontSize: '14px',
+              textAlign: 'center'
+            }}>
+              Waiting for cards to be played...
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Player Areas */}

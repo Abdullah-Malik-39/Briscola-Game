@@ -501,68 +501,99 @@ io.on('connection', (socket) => {
       
       // If this completes a trick, determine winner and update scores
       if (game.currentTrick.length === gameState.players.size) {
-        const winningCard = getWinningCard(game.currentTrick, game.trumpSuit);
-        const winningPlayer = game.currentTrick.find(card => 
-          card.suit === winningCard.suit && card.value === winningCard.value
-        ).player;
+        // First, broadcast the current state so everyone can see the last card played
+        console.log('Trick completed, showing cards before scoring...');
+        io.to(gameCode).emit('gameStateUpdate', {
+          gameState: game,
+          lastMove: {
+            playerId,
+            move,
+            args
+          },
+          trickComplete: true // Flag to indicate trick is complete but scores not yet updated
+        });
         
-        game.trickWinner = winningPlayer;
-        const trickPoints = calculateTeamPoints(game.currentTrick);
-        game.scores[winningPlayer] += trickPoints;
+        // Add delay before processing the trick completion
+        setTimeout(() => {
+          const winningCard = getWinningCard(game.currentTrick, game.trumpSuit);
+          const winningPlayer = game.currentTrick.find(card => 
+            card.suit === winningCard.suit && card.value === winningCard.value
+          ).player;
+          
+          game.trickWinner = winningPlayer;
+          const trickPoints = calculateTeamPoints(game.currentTrick);
+          game.scores[winningPlayer] += trickPoints;
+          
+          // Update team scores for 4-player mode
+          if (game.gameMode === 'teams' && game.teams[winningPlayer]) {
+            const team = game.teams[winningPlayer];
+            const teamIndex = team === 'team1' ? 0 : 1;
+            game.teamScores[teamIndex] += trickPoints;
+          }
+          
+          // Clear current trick
+          game.currentTrick = [];
+          
+          // Check if game is over
+          const totalCardsPlayed = game.playedCards.length;
+          const totalCards = 40; // 40 cards in a Briscola deck
+          
+          // Game ends when all cards are played (including the trump card)
+          if (totalCardsPlayed >= totalCards) {
+            game.gamePhase = 'finished';
+            console.log('Game finished! All cards played:', totalCardsPlayed);
+          }
+          
+          // Also check if deck is empty and no more cards to draw
+          if (game.deck.length === 0 && game.hands.every(hand => hand.length === 0)) {
+            game.gamePhase = 'finished';
+            console.log('Game finished! Deck empty and no cards in hands');
+          }
+          
+          // Check if any player has no cards left (game should end)
+          if (game.hands.some(hand => hand.length === 0)) {
+            game.gamePhase = 'finished';
+            console.log('Game finished! At least one player has no cards left');
+          }
+          
+          // Next player leads
+          game.currentPlayer = winningPlayer;
+          
+          // Broadcast the final state with updated scores
+          console.log('Broadcasting final trick completion with updated scores');
+          io.to(gameCode).emit('gameStateUpdate', {
+            gameState: game,
+            lastMove: {
+              playerId,
+              move,
+              args
+            },
+            trickComplete: false // Flag to indicate scores are now updated
+          });
+        }, 2000); // 2 second delay
         
-        // Update team scores for 4-player mode
-        if (game.gameMode === 'teams' && game.teams[winningPlayer]) {
-          const team = game.teams[winningPlayer];
-          const teamIndex = team === 'team1' ? 0 : 1;
-          game.teamScores[teamIndex] += trickPoints;
-        }
-        
-        // Clear current trick
-        game.currentTrick = [];
-        
-        // Check if game is over
-        const totalCardsPlayed = game.playedCards.length;
-        const totalCards = 40; // 40 cards in a Briscola deck
-        
-        // Game ends when all cards are played (including the trump card)
-        if (totalCardsPlayed >= totalCards) {
-          game.gamePhase = 'finished';
-          console.log('Game finished! All cards played:', totalCardsPlayed);
-        }
-        
-        // Also check if deck is empty and no more cards to draw
-        if (game.deck.length === 0 && game.hands.every(hand => hand.length === 0)) {
-          game.gamePhase = 'finished';
-          console.log('Game finished! Deck empty and no cards in hands');
-        }
-        
-        // Check if any player has no cards left (game should end)
-        if (game.hands.some(hand => hand.length === 0)) {
-          game.gamePhase = 'finished';
-          console.log('Game finished! At least one player has no cards left');
-        }
-        
-        // Next player leads
-        game.currentPlayer = winningPlayer;
+        return; // Don't broadcast immediately, wait for timeout
       } else {
         // Next player's turn
         game.currentPlayer = (game.currentPlayer + 1) % gameState.players.size;
       }
     }
     
-    // Broadcast updated game state to all players
-    console.log('Broadcasting game state update to game', gameCode);
-    console.log('Game state hands:', game.hands);
-    console.log('Game state deck length:', game.deck.length);
-    
-    io.to(gameCode).emit('gameStateUpdate', {
-      gameState: game,
-      lastMove: {
-        playerId,
-        move,
-        args
-      }
-    });
+    // Broadcast updated game state to all players (only for non-trick-complete moves)
+    if (game.currentTrick.length !== gameState.players.size) {
+      console.log('Broadcasting game state update to game', gameCode);
+      console.log('Game state hands:', game.hands);
+      console.log('Game state deck length:', game.deck.length);
+      
+      io.to(gameCode).emit('gameStateUpdate', {
+        gameState: game,
+        lastMove: {
+          playerId,
+          move,
+          args
+        }
+      });
+    }
   });
 
   // Disconnect handling
