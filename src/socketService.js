@@ -92,6 +92,11 @@ class SocketService {
         reject(error);
       });
 
+      this.socket.once('gameStarted', (data) => {
+        console.log('Received gameStarted event:', data);
+        resolve(data);
+      });
+
       // Add timeout to prevent hanging
       setTimeout(() => {
         reject(new Error('Join game timeout'));
@@ -193,6 +198,72 @@ class SocketService {
         gameCode: this.gameCode,
         team
       });
+    }
+  }
+
+  // Check for user's active games
+  async getUserGames(socketId) {
+    try {
+      const response = await fetch(`http://localhost:3001/api/user/${socketId}/games`);
+      const data = await response.json();
+      return data.games;
+    } catch (error) {
+      console.error('Error fetching user games:', error);
+      return [];
+    }
+  }
+
+  // Check for user's active games by player name
+  async getUserGamesByName(playerName) {
+    try {
+      const response = await fetch(`http://localhost:3001/api/user/name/${encodeURIComponent(playerName)}/games`);
+      
+      if (!response.ok) {
+        console.log(`Server returned ${response.status} for player ${playerName}`);
+        return [];
+      }
+      
+      const data = await response.json();
+      return data.games || [];
+    } catch (error) {
+      console.error('Error fetching user games by name:', error);
+      return [];
+    }
+  }
+
+  // Restore game from persistent storage
+  async restoreGame(gameCode, socketId) {
+    try {
+      const response = await fetch(`http://localhost:3001/api/games/${gameCode}/restore`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ socketId })
+      });
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error restoring game:', error);
+      throw error;
+    }
+  }
+
+  // Make offline move
+  async makeOfflineMove(gameCode, socketId, playerId, move, args) {
+    try {
+      const response = await fetch(`http://localhost:3001/api/games/${gameCode}/move`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ socketId, playerId, move, args })
+      });
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error making offline move:', error);
+      throw error;
     }
   }
 

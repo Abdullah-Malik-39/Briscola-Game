@@ -268,7 +268,7 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
   );
 }
 
-export function ServerBoard({ gameState, players, playerID }) {
+export function ServerBoard({ gameState, players, playerID, gameConfig, userSession }) {
   const [localGameState, setLocalGameState] = useState(gameState);
   const [error, setError] = useState(null);
 
@@ -301,9 +301,31 @@ export function ServerBoard({ gameState, players, playerID }) {
     };
   }, []);
 
-  const handleCardClick = (playerId, cardIndex) => {
+  const handleCardClick = async (playerId, cardIndex) => {
     if (localGameState && localGameState.currentPlayer === playerId) {
-      socketService.sendGameMove('playCard', [cardIndex]);
+      // Check if we're in offline mode (no active socket connection)
+      if (!socketService.socket || !socketService.socket.connected) {
+        console.log('Making offline move');
+        try {
+          const result = await socketService.makeOfflineMove(
+            gameConfig.gameCode,
+            userSession?.socketId,
+            playerId,
+            'playCard',
+            { cardIndex }
+          );
+          console.log('Offline move result:', result);
+          
+          // Update local game state
+          setLocalGameState(result.gameState);
+        } catch (error) {
+          console.error('Error making offline move:', error);
+          alert(`Error making move: ${error.message || 'Unknown error'}`);
+        }
+      } else {
+        // Normal online move
+        socketService.sendGameMove('playCard', [cardIndex]);
+      }
     }
   };
 

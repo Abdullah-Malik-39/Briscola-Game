@@ -3,6 +3,92 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
+function normalizeName(name) { return (name || '').trim().toLowerCase(); }
+
+// Ensure a proper Map for players when loading from persisted JSON
+function ensurePlayersMapFromPersistent(gameCode, gameState) {
+  if (!gameState) return;
+  const looksLikeMap = gameState.players && typeof gameState.players.values === 'function';
+  if (looksLikeMap) return;
+  const persistentData = persistentGames.get(gameCode);
+  const roster = persistentData?.registeredPlayers || gameState.registeredPlayers || [];
+  const playersArr = persistentData?.players || [];
+  const identities = Array.isArray(roster) && roster.length > 0
+    ? roster.map(r => ({
+        playerName: r.playerName,
+        playerId: r.playerId ?? null,
+        isHost: !!r.isHost,
+        lastKnownSocketId: r.lastKnownSocketId || null
+      }))
+    : (Array.isArray(playersArr) ? playersArr.map(p => ({
+        playerName: p.playerName,
+        playerId: p.playerId ?? null,
+        isHost: !!p.isHost,
+        lastKnownSocketId: p.socketId || null
+      })) : []);
+  const map = new Map();
+  identities.forEach(id => {
+    const tempSocketId = id.lastKnownSocketId || `temp_${Date.now()}_${Math.random()}`;
+    map.set(tempSocketId, {
+      playerName: id.playerName,
+      playerId: id.playerId,
+      isHost: id.isHost,
+      socketId: tempSocketId,
+      gameCode
+    });
+  });
+  gameState.players = map;
+}
+
+// Ensure every rostered player exists in the runtime players Map
+function ensureAllRosterPlayersPresent(gameCode, gameState) {
+  if (!gameState) return;
+  if (!Array.isArray(gameState.registeredPlayers)) return;
+  if (!gameState.players || typeof gameState.players.set !== 'function') {
+    gameState.players = new Map();
+  }
+  const existing = new Set(Array.from(gameState.players.values()).map(p => normalizeName(p.playerName)));
+  gameState.registeredPlayers.forEach(r => {
+    const n = normalizeName(r.playerName);
+    if (!existing.has(n)) {
+      const tempSocketId = r.lastKnownSocketId || `temp_${Date.now()}_${Math.random()}`;
+      gameState.players.set(tempSocketId, {
+        playerName: r.playerName,
+        playerId: r.playerId ?? null,
+        isHost: !!r.isHost,
+        socketId: tempSocketId,
+        gameCode
+      });
+      existing.add(n);
+    }
+  });
+}
+
+function getPlayersListForClient(gameState) {
+  const liveList = Array.from(gameState?.players?.values?.() || []);
+  if (Array.isArray(gameState?.registeredPlayers) && gameState.registeredPlayers.length > 0) {
+    const byName = new Map(liveList.map(p => [normalizeName(p.playerName), p]));
+    return gameState.registeredPlayers.map(r => {
+      const live = byName.get(normalizeName(r.playerName));
+      return {
+        playerName: r.playerName,
+        playerId: (r.playerId ?? (live?.playerId ?? null)),
+        isHost: !!r.isHost,
+        socketId: live?.socketId || r.lastKnownSocketId || null
+      };
+    });
+  }
+  return liveList;
+}
+
+function updateRosterLastKnownSocket(gameState, playerName, socketId) {
+  if (!Array.isArray(gameState?.registeredPlayers)) return;
+  const idx = gameState.registeredPlayers.findIndex(r => normalizeName(r.playerName) === normalizeName(playerName));
+  if (idx >= 0) {
+    gameState.registeredPlayers[idx].lastKnownSocketId = socketId;
+  }
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -21,6 +107,98 @@ app.use(express.static(path.join(__dirname, 'build')));
 // Game state management
 const games = new Map(); // gameCode -> gameState
 const players = new Map(); // socketId -> playerInfo
+
+// User-to-game mapping for single game per user
+const userGames = new Map(); // normalized playerName -> gameCode
+
+// Persistent game storage (in production, use a database)
+const persistentGames = new Map(); // gameCode -> persistentGameData
+const PERSISTENT_STORAGE_FILE = 'persistent_games.json';
+
+// Load persistent games from file on startup
+function loadPersistentGamesFromFile() {
+  try {
+    if (fs.existsSync(PERSISTENT_STORAGE_FILE)) {
+      const data = fs.readFileSync(PERSISTENT_STORAGE_FILE, 'utf8');
+      const games = JSON.parse(data);
+      Object.entries(games).forEach(([gameCode, gameData]) => {
+        persistentGames.set(gameCode, gameData);
+      });
+      console.log(`Loaded ${persistentGames.size} persistent games from file`);
+    }
+  } catch (error) {
+    console.error('Error loading persistent games:', error);
+  }
+}
+
+// Save persistent games to file
+function savePersistentGamesToFile() {
+  try {
+    const games = Object.fromEntries(persistentGames);
+    fs.writeFileSync(PERSISTENT_STORAGE_FILE, JSON.stringify(games, null, 2));
+    console.log(`Saved ${persistentGames.size} persistent games to file`);
+  } catch (error) {
+    console.error('Error saving persistent games:', error);
+  }
+}
+
+// Load persistent games on startup
+loadPersistentGamesFromFile();
+
+// Save game state persistently
+function saveGameState(gameCode, gameState) {
+  const persistentData = {
+    gameCode,
+    gameState,
+    lastUpdated: Date.now(),
+    players: Array.from(gameState.players.values()),
+    registeredPlayers: gameState.registeredPlayers || [],
+    // Store complete game state including gameState.gameState
+    completeGameState: gameState.gameState
+  };
+  persistentGames.set(gameCode, persistentData);
+  
+  // Also save to file
+  savePersistentGamesToFile();
+  
+  console.log(`Saved persistent game state for ${gameCode} with complete game data`);
+}
+
+// Load game state from persistent storage
+function loadGameState(gameCode) {
+  const persistentData = persistentGames.get(gameCode);
+  if (persistentData) {
+    console.log(`Loaded persistent game state for ${gameCode}`);
+    return persistentData;
+  }
+  return null;
+}
+
+// Clean up finished game
+function cleanupFinishedGame(gameCode) {
+  console.log(`Cleaning up finished game: ${gameCode}`);
+  
+  // Get game state to clean up user mappings
+  const gameState = games.get(gameCode);
+  if (gameState) {
+    // Remove user mappings for all players
+    Array.from(gameState.players.values()).forEach(player => {
+      userGames.delete(player.playerName);
+      console.log(`Removed user mapping for ${player.playerName}`);
+    });
+  }
+  
+  // Remove from active games
+  games.delete(gameCode);
+  
+  // Remove from persistent storage
+  persistentGames.delete(gameCode);
+  
+  // Save to file after cleanup
+  savePersistentGamesToFile();
+  
+  console.log(`Game ${gameCode} completely cleaned up`);
+}
 
 // Briscola game logic
 const SUITS = ['Clubs', 'Hearts', 'Diamonds', 'Spades'];
@@ -103,6 +281,8 @@ const createGameState = (gameCode, hostSocketId, gameMode) => ({
   hostSocketId,
   gameMode,
   players: new Map(),
+  // Keep a roster of all registered players by stable identity (playerName)
+  registeredPlayers: [], // [{ playerName, playerId, lastKnownSocketId, isHost }]
   gameStarted: false,
   gameState: null,
   createdAt: Date.now()
@@ -157,22 +337,47 @@ const createPlayerInfo = (socketId, playerName, gameCode, isHost = false) => ({
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
+  console.log(`Connection from: ${socket.handshake.address}`);
+  console.log(`User-Agent: ${socket.handshake.headers['user-agent']}`);
 
   // Create new game
   socket.on('createGame', (data) => {
     const { playerName, gameMode, gameCode } = data;
     
+    // Check if user already has a game
+    const existingGameCode = userGames.get(normalizeName(playerName));
+    if (existingGameCode) {
+      console.log(`User ${playerName} already has a game: ${existingGameCode}`);
+      // Clean up old game if it exists
+      if (games.has(existingGameCode)) {
+        games.delete(existingGameCode);
+      }
+      if (persistentGames.has(existingGameCode)) {
+        persistentGames.delete(existingGameCode);
+      }
+    }
+    
     // Create game state
     const gameState = createGameState(gameCode, socket.id, gameMode);
     games.set(gameCode, gameState);
+    
+    // Map user to game
+    userGames.set(normalizeName(playerName), gameCode);
     
     // Create player info
     const playerInfo = createPlayerInfo(socket.id, playerName, gameCode, true);
     players.set(socket.id, playerInfo);
     gameState.players.set(socket.id, playerInfo);
+  // Update roster
+  gameState.registeredPlayers = [
+    { playerName, playerId: 0, lastKnownSocketId: socket.id, isHost: true }
+  ];
     
     // Join room
     socket.join(gameCode);
+    
+    // Save to persistent storage
+    saveGameState(gameCode, gameState);
     
     console.log(`Game created: ${gameCode} by ${playerName}`);
     
@@ -189,23 +394,239 @@ io.on('connection', (socket) => {
     console.log('Server received joinGame event:', data);
     const { playerName, gameCode } = data;
     
-    const gameState = games.get(gameCode);
+    // Check if user already has a different game; if so, override/cleanup previous mapping
+    const normalizedName = normalizeName(playerName);
+    const userCurrentGame = userGames.get(normalizedName);
+    if (userCurrentGame && userCurrentGame !== gameCode) {
+      console.log(`Overriding previous game for ${playerName}: ${userCurrentGame} -> ${gameCode}`);
+      // Remove player from active previous game
+      const prevActive = games.get(userCurrentGame);
+      if (prevActive) {
+        // Remove from players Map by name
+        for (const [sid, p] of Array.from(prevActive.players.entries())) {
+          if (normalizeName(p.playerName) === normalizedName) {
+            prevActive.players.delete(sid);
+          }
+        }
+        // Remove from roster
+        prevActive.registeredPlayers = (prevActive.registeredPlayers || []).filter(r => normalizeName(r.playerName) !== normalizedName);
+        saveGameState(userCurrentGame, prevActive);
+        if (prevActive.players.size === 0) {
+          games.delete(userCurrentGame);
+          console.log(`Previous game ${userCurrentGame} had no players left and was removed from active games`);
+        }
+      }
+      // Remove from persistent previous game
+      const prevPersist = persistentGames.get(userCurrentGame);
+      if (prevPersist) {
+        prevPersist.players = (prevPersist.players || []).filter(p => normalizeName(p.playerName) !== normalizedName);
+        prevPersist.registeredPlayers = (prevPersist.registeredPlayers || []).filter(r => normalizeName(r.playerName) !== normalizedName);
+        persistentGames.set(userCurrentGame, prevPersist);
+        savePersistentGamesToFile();
+      }
+      // Update mapping to new game
+      userGames.set(normalizedName, gameCode);
+    }
+    
+    let gameState = games.get(gameCode);
+    
+    // If not in active games, check persistent games
     if (!gameState) {
-      console.log(`Game ${gameCode} not found`);
+      console.log(`Game ${gameCode} not in active games, checking persistent storage...`);
+      const persistentData = persistentGames.get(gameCode);
+      if (persistentData) {
+        console.log(`Found game ${gameCode} in persistent storage, restoring...`);
+        console.log(`Persistent data players:`, persistentData.players);
+        // Restore game to active games
+        const restoredGameState = persistentData.gameState;
+        
+        // Convert players array back to Map and recreate roster
+        restoredGameState.players = new Map();
+        const persistedPlayers = (persistentData.players && Array.isArray(persistentData.players)) ? persistentData.players : [];
+        const persistedRoster = (persistentData.registeredPlayers && Array.isArray(persistentData.registeredPlayers)) ? persistentData.registeredPlayers : [];
+
+        // Prefer roster for canonical identities; fall back to players array
+        const identities = persistedRoster.length > 0 ? persistedRoster.map(r => ({
+          playerName: r.playerName,
+          playerId: r.playerId ?? null,
+          isHost: !!r.isHost,
+          lastKnownSocketId: r.lastKnownSocketId || null
+        })) : persistedPlayers.map(p => ({
+          playerName: p.playerName,
+          playerId: p.playerId ?? null,
+          isHost: !!p.isHost,
+          lastKnownSocketId: p.socketId || null
+        }));
+
+        restoredGameState.registeredPlayers = identities;
+
+        identities.forEach(id => {
+          // Reinsert as offline participants with temp socketIds; they will swap on reconnect
+          const tempSocketId = id.lastKnownSocketId || `temp_${Date.now()}_${Math.random()}`;
+          const playerObj = {
+            playerName: id.playerName,
+            playerId: id.playerId,
+            isHost: id.isHost,
+            socketId: tempSocketId,
+            gameCode
+          };
+          restoredGameState.players.set(tempSocketId, playerObj);
+          userGames.set(normalizeName(id.playerName), gameCode);
+          console.log(`Restored roster player ${id.playerName} with temp socketId ${tempSocketId}`);
+        });
+        console.log(`Restored ${restoredGameState.players.size} players to active game`);
+        
+        // Restore complete game state if available
+        if (persistentData.completeGameState) {
+          restoredGameState.gameState = persistentData.completeGameState;
+          console.log(`Restored complete game state for ${gameCode}`);
+        }
+        
+        // Ensure full roster present in players map
+        ensureAllRosterPlayersPresent(gameCode, restoredGameState);
+        games.set(gameCode, restoredGameState);
+        gameState = restoredGameState;
+        console.log(`Game ${gameCode} restored from persistent storage with ${gameState.players.size} players`);
+      }
+    }
+    
+    if (!gameState) {
+      console.log(`Game ${gameCode} not found in active or persistent storage`);
       socket.emit('joinError', { message: 'Game not found' });
       return;
     }
     
+    // Check if player already exists in game (by name)
+    console.log(`Checking for existing player ${playerName} in game ${gameCode}`);
+    console.log(`Current players in game:`, Array.from(gameState.players.values()).map(p => ({ name: p.playerName, socketId: p.socketId })));
+    
+    let existingPlayer = Array.from(gameState.players.values()).find(p => p.playerName === playerName);
+    
+    // If not found in active game, check persistent storage
+    if (!existingPlayer) {
+      console.log(`Player ${playerName} not found in active game, checking persistent storage...`);
+      const persistentData = persistentGames.get(gameCode);
+      if (persistentData && persistentData.players) {
+        console.log(`Persistent storage players:`, persistentData.players.map(p => ({ name: p.playerName, socketId: p.socketId })));
+        const persistentPlayer = persistentData.players.find(p => p.playerName === playerName);
+        if (persistentPlayer) {
+          console.log(`Found player ${playerName} in persistent storage, adding to active game...`);
+          // Add player back to active game
+          persistentPlayer.socketId = socket.id; // Update socketId
+          gameState.players.set(socket.id, persistentPlayer);
+          existingPlayer = persistentPlayer;
+          
+          // Update user mapping
+          userGames.set(normalizeName(playerName), gameCode);
+          
+          // Update persistent storage with new socketId
+          const updatedPersistentData = { ...persistentData };
+          updatedPersistentData.players = updatedPersistentData.players.map(p => 
+            p.playerName === playerName ? { ...p, socketId: socket.id } : p
+          );
+          persistentGames.set(gameCode, updatedPersistentData);
+        } else {
+          console.log(`Player ${playerName} not found in persistent storage players:`, persistentData.players.map(p => p.playerName));
+        }
+      } else {
+        console.log(`No persistent data found for game ${gameCode}`);
+      }
+    }
+    
+    if (existingPlayer) {
+      console.log(`Found existing player ${playerName} with socketId ${existingPlayer.socketId}, updating to ${socket.id}`);
+      // Update socketId for existing player
+      gameState.players.delete(existingPlayer.socketId);
+      existingPlayer.socketId = socket.id;
+      gameState.players.set(socket.id, existingPlayer);
+      players.set(socket.id, existingPlayer);
+      updateRosterLastKnownSocket(gameState, playerName, socket.id);
+      
+      // Join room
+      socket.join(gameCode);
+      
+      console.log(`Player ${playerName} reconnected to game ${gameCode}`);
+      
+      // If game is started, send the current game state
+      if (gameState.gameStarted && gameState.gameState) {
+        console.log(`Sending gameStarted event to reconnected player ${playerName}`);
+        socket.emit('gameStarted', {
+          gameState: gameState.gameState,
+          players: getPlayersListForClient(gameState)
+        });
+      } else {
+        console.log(`Sending joinSuccess event to reconnected player ${playerName}`);
+        // Emit success for lobby
+        socket.emit('joinSuccess', {
+          gameCode: gameCode,
+          gameMode: gameState.gameMode,
+          players: getPlayersListForClient(gameState)
+        });
+      }
+      
+      return;
+    } else {
+      console.log(`Player ${playerName} not found in existing players`);
+    }
+    
+    // If game already started, allow rejoin if player is in registered roster
     if (gameState.gameStarted) {
-      console.log(`Game ${gameCode} already started`);
+      const normalizedName = normalizeName(playerName);
+      const roster = gameState.registeredPlayers || [];
+      const rosterEntry = roster.find(r => normalizeName(r.playerName) === normalizedName);
+      if (rosterEntry) {
+        console.log(`Allowing roster-based rejoin for ${playerName} into started game ${gameCode}`);
+        const playerInfo = {
+          playerName,
+          socketId: socket.id,
+          gameCode,
+          isHost: !!rosterEntry.isHost,
+          playerId: rosterEntry.playerId ?? null,
+          joinedAt: Date.now()
+        };
+        players.set(socket.id, playerInfo);
+        gameState.players.set(socket.id, playerInfo);
+        updateRosterLastKnownSocket(gameState, playerName, socket.id);
+        socket.join(gameCode);
+        // Emit current state depending on availability
+        if (gameState.gameState) {
+          socket.emit('gameStarted', {
+            gameState: gameState.gameState,
+            players: getPlayersListForClient(gameState)
+          });
+        } else {
+          socket.emit('joinSuccess', {
+            gameCode: gameCode,
+            gameMode: gameState.gameMode,
+            players: getPlayersListForClient(gameState)
+          });
+        }
+        return;
+      }
+      console.log(`Game ${gameCode} already started and player ${playerName} not in roster`);
       socket.emit('joinError', { message: 'Game already started' });
       return;
     }
     
-    // Create player info
+    // Create new player info
     const playerInfo = createPlayerInfo(socket.id, playerName, gameCode, false);
     players.set(socket.id, playerInfo);
     gameState.players.set(socket.id, playerInfo);
+  // Update roster if not present
+  if (!gameState.registeredPlayers.find(p => p.playerName === playerName)) {
+    const nextId = gameState.registeredPlayers.length;
+    gameState.registeredPlayers.push({
+      playerName,
+      playerId: nextId,
+      lastKnownSocketId: socket.id,
+      isHost: false
+    });
+  }
+    
+    // Update user mapping
+    userGames.set(normalizeName(playerName), gameCode);
+  // Persist immediately so offline discovery works for both players
+  saveGameState(gameCode, gameState);
     
     // Join room
     socket.join(gameCode);
@@ -371,6 +792,10 @@ io.on('connection', (socket) => {
     
     // Mark game as started
     gameState.gameStarted = true;
+    
+    // Save complete game state to persistent storage immediately
+    saveGameState(gameCode, gameState);
+    console.log(`Game ${gameCode} started and saved to persistent storage`);
     
     // Assign player IDs
     const playerArray = Array.from(gameState.players.values());
@@ -628,18 +1053,21 @@ io.on('connection', (socket) => {
           if (totalCardsPlayed >= totalCards) {
             game.gamePhase = 'finished';
             console.log('Game finished! All cards played:', totalCardsPlayed);
+            cleanupFinishedGame(gameCode);
           }
           
           // Also check if deck is empty and no more cards to draw
           if (game.deck.length === 0 && game.hands.every(hand => hand.length === 0)) {
             game.gamePhase = 'finished';
             console.log('Game finished! Deck empty and no cards in hands');
+            cleanupFinishedGame(gameCode);
           }
           
           // Check if any player has no cards left (game should end)
           if (game.hands.some(hand => hand.length === 0)) {
             game.gamePhase = 'finished';
             console.log('Game finished! At least one player has no cards left');
+            cleanupFinishedGame(gameCode);
           }
           
           // Next player leads
@@ -664,6 +1092,9 @@ io.on('connection', (socket) => {
         game.currentPlayer = (game.currentPlayer + 1) % gameState.players.size;
       }
     }
+    
+    // Always save game state persistently after every move
+    saveGameState(gameCode, gameState);
     
     // Broadcast updated game state to all players (only for non-trick-complete moves)
     if (game.currentTrick.length !== gameState.players.size) {
@@ -690,6 +1121,15 @@ io.on('connection', (socket) => {
     if (playerInfo) {
       const gameState = games.get(playerInfo.gameCode);
       if (gameState) {
+        // Check if this is the last player BEFORE deleting
+        const isLastPlayer = gameState.players.size === 1;
+        
+        // If this is the last player, save game state before deleting
+        if (isLastPlayer && gameState.gameState) {
+          console.log(`Last player disconnecting, saving game state with all players...`);
+          saveGameState(playerInfo.gameCode, gameState);
+        }
+        
         gameState.players.delete(socket.id);
         
         // If host disconnected, assign new host
@@ -702,10 +1142,15 @@ io.on('connection', (socket) => {
           });
         }
         
-        // If no players left, delete game
+        // If no players left, move to persistent storage
         if (gameState.players.size === 0) {
+          // Save game state to persistent storage before removing from active games
+          if (gameState.gameState) {
+            saveGameState(playerInfo.gameCode, gameState);
+            console.log(`Game ${playerInfo.gameCode} saved to persistent storage before removal`);
+          }
           games.delete(playerInfo.gameCode);
-          console.log(`Game ${playerInfo.gameCode} deleted - no players left`);
+          console.log(`Game ${playerInfo.gameCode} moved to persistent storage - no active players`);
         } else {
           // Notify remaining players
           io.to(playerInfo.gameCode).emit('playerLeft', {
@@ -721,9 +1166,69 @@ io.on('connection', (socket) => {
 });
 
 // API endpoints
+// Get user's current game
+app.get('/api/user/:playerName/game', (req, res) => {
+  const { playerName } = req.params;
+  let gameCode = userGames.get(normalizeName(playerName));
+  let gameState = null;
+
+  // Try mapping first
+  if (gameCode) {
+    gameState = games.get(gameCode) || persistentGames.get(gameCode)?.gameState || null;
+  }
+
+  // If no mapping or missing game, scan active and persistent by roster/name
+  if (!gameState) {
+    // Scan active games
+    for (const [code, gs] of games.entries()) {
+      const inRoster = Array.isArray(gs.registeredPlayers) && gs.registeredPlayers.some(r => r.playerName === playerName);
+      const inPlayers = Array.from(gs.players.values()).some(p => p.playerName === playerName);
+      if (inRoster || inPlayers) {
+        gameCode = code;
+        gameState = gs;
+        userGames.set(normalizeName(playerName), code);
+        break;
+      }
+    }
+  }
+
+  if (!gameState) {
+    // Scan persistent games
+    for (const [code, data] of persistentGames.entries()) {
+      const gs = data.gameState;
+      ensurePlayersMapFromPersistent(code, gs);
+      const roster = data.registeredPlayers || gs.registeredPlayers || [];
+      const playersArr = data.players || [];
+      const inRoster = Array.isArray(roster) && roster.some(r => r.playerName === playerName);
+      const inPlayers = Array.isArray(playersArr) && playersArr.some(p => p.playerName === playerName);
+      if (inRoster || inPlayers) {
+        gameCode = code;
+        gameState = gs;
+        userGames.set(normalizeName(playerName), code);
+        break;
+      }
+    }
+  }
+
+  if (!gameState) {
+    return res.json({ gameCode: null, message: 'No active game found' });
+  }
+
+  res.json({
+    gameCode,
+    gameStarted: gameState.gameStarted,
+    players: Array.from(gameState.players.values()).map(p => ({
+      name: p.playerName,
+      socketId: p.socketId,
+      playerId: p.playerId
+    }))
+  });
+});
+
 app.get('/api/games/:gameCode', (req, res) => {
   const { gameCode } = req.params;
   const gameState = games.get(gameCode);
+  ensurePlayersMapFromPersistent(gameCode, gameState);
   
   console.log(`API request for game ${gameCode}:`, {
     gameExists: !!gameState,
@@ -778,6 +1283,156 @@ app.get('/api/games/:gameCode', (req, res) => {
   res.json(response);
 });
 
+// Check for user's active games
+app.get('/api/user/:socketId/games', (req, res) => {
+  const { socketId } = req.params;
+  const userGames = [];
+  
+  // Check persistent games for this user
+  for (const [gameCode, persistentData] of persistentGames.entries()) {
+    const player = persistentData.players.find(p => p.socketId === socketId);
+    if (player) {
+      userGames.push({
+        gameCode,
+        playerName: player.playerName,
+        gameState: persistentData.gameState,
+        lastUpdated: persistentData.lastUpdated
+      });
+    }
+  }
+  
+  res.json({ games: userGames });
+});
+
+// Check for user's active games by player name
+app.get('/api/user/name/:playerName/games', (req, res) => {
+  const { playerName } = req.params;
+  const userGames = [];
+  
+  console.log(`Checking games for playerName: ${playerName}`);
+  console.log(`Persistent games count: ${persistentGames.size}`);
+  
+  // Check persistent games for this user by name
+  for (const [gameCode, persistentData] of persistentGames.entries()) {
+    console.log(`Checking game ${gameCode}:`, persistentData);
+    const player = persistentData.players.find(p => p.playerName === playerName);
+    if (player) {
+      console.log(`Found player ${player.playerName} in game ${gameCode}`);
+      userGames.push({
+        gameCode,
+        playerName: player.playerName,
+        gameState: persistentData.gameState,
+        lastUpdated: persistentData.lastUpdated
+      });
+    }
+  }
+  
+  console.log(`Returning ${userGames.length} games for player ${playerName}`);
+  res.json({ games: userGames });
+});
+
+// Restore game from persistent storage
+app.post('/api/games/:gameCode/restore', (req, res) => {
+  const { gameCode } = req.params;
+  const { socketId } = req.body;
+  
+  const persistentData = loadGameState(gameCode);
+  if (!persistentData) {
+    return res.status(404).json({ error: 'Game not found in persistent storage' });
+  }
+  
+  // Check if user was part of this game
+  const player = persistentData.players.find(p => p.socketId === socketId);
+  if (!player) {
+    return res.status(403).json({ error: 'User not part of this game' });
+  }
+  
+  // Restore game to active games
+  games.set(gameCode, persistentData.gameState);
+  console.log(`Game ${gameCode} restored from persistent storage`);
+  
+  res.json({
+    success: true,
+    gameState: persistentData.gameState,
+    players: persistentData.players
+  });
+});
+
+// Make offline move
+app.post('/api/games/:gameCode/move', (req, res) => {
+  const { gameCode } = req.params;
+  const { socketId, playerId, move, args } = req.body;
+  
+  console.log(`Offline move request for game ${gameCode}: Player ${playerId} making move ${move}`);
+  
+  // Get game from persistent storage or active games
+  let gameState = games.get(gameCode);
+  if (!gameState) {
+    const persistentData = loadGameState(gameCode);
+    if (!persistentData) {
+      return res.status(404).json({ error: 'Game not found' });
+    }
+    gameState = persistentData.gameState;
+    
+    // Restore complete game state
+    if (persistentData.completeGameState) {
+      gameState.gameState = persistentData.completeGameState;
+      console.log(`Restored complete game state for offline move in game ${gameCode}`);
+    }
+  }
+  
+  // Resolve player by playerId from players map or registered roster
+  let player = Array.from(gameState.players.values()).find(p => p.playerId === Number(playerId));
+  if (!player && Array.isArray(gameState.registeredPlayers)) {
+    const reg = gameState.registeredPlayers.find(r => r.playerId === Number(playerId));
+    if (reg) {
+      // Recreate a lightweight player entry for making the move
+      const tempId = socketId || reg.lastKnownSocketId || `temp_${Date.now()}_${Math.random()}`;
+      player = {
+        playerName: reg.playerName,
+        playerId: reg.playerId,
+        isHost: !!reg.isHost,
+        socketId: tempId,
+        gameCode
+      };
+      gameState.players.set(tempId, player);
+    }
+  }
+  if (!player) {
+    return res.status(403).json({ error: 'User not authorized for this move' });
+  }
+  
+  try {
+    // Make the move using the game logic
+    const game = gameState.gameState;
+    if (!game) {
+      return res.status(400).json({ error: 'Game not started' });
+    }
+    
+    // Apply the move
+    game.move(game, { playerID: playerId, move, args });
+    
+    // Save the updated game state
+    saveGameState(gameCode, gameState);
+    
+    // If game is not active, restore it temporarily
+    if (!games.has(gameCode)) {
+      games.set(gameCode, gameState);
+    }
+    
+    console.log(`Offline move made: Player ${playerId} made move ${move} in game ${gameCode}`);
+    
+    res.json({
+      success: true,
+      gameState: game,
+      message: 'Move saved successfully'
+    });
+  } catch (error) {
+    console.error('Error making offline move:', error);
+    res.status(400).json({ error: error.message || 'Invalid move' });
+  }
+});
+
 // Debug endpoint to see all games
 app.get('/api/debug/games', (req, res) => {
   const allGames = Array.from(games.entries()).map(([code, game]) => ({
@@ -794,7 +1449,19 @@ app.get('/api/debug/games', (req, res) => {
   
   res.json({
     totalGames: games.size,
-    games: allGames
+    activeGames: allGames,
+    persistentGames: Array.from(persistentGames.entries()).map(([code, data]) => ({
+      gameCode: code,
+      lastUpdated: data.lastUpdated,
+      players: data.players.map(p => ({
+        name: p.playerName,
+        socketId: p.socketId
+      }))
+    })),
+    userMappings: Array.from(userGames.entries()).map(([name, gameCode]) => ({
+      playerName: name,
+      gameCode: gameCode
+    }))
   });
 });
 
@@ -840,12 +1507,108 @@ app.post('/api/games/:gameCode/start', (req, res) => {
   });
 });
 
+// Debug endpoint to check specific game
+app.get('/api/debug/game/:gameCode', (req, res) => {
+  const { gameCode } = req.params;
+  
+  const activeGame = games.get(gameCode);
+  const persistentData = persistentGames.get(gameCode);
+  
+  res.json({
+    gameCode,
+    activeGame: activeGame ? {
+      gameStarted: activeGame.gameStarted,
+      players: Array.from(activeGame.players.values()).map(p => ({
+        name: p.playerName,
+        socketId: p.socketId,
+        playerId: p.playerId
+      }))
+    } : null,
+    persistentGame: persistentData ? {
+      lastUpdated: persistentData.lastUpdated,
+      players: persistentData.players.map(p => ({
+        name: p.playerName,
+        socketId: p.socketId
+      }))
+    } : null
+  });
+});
+
+// Network test endpoint
+app.get('/api/network-test', (req, res) => {
+  res.json({
+    status: 'success',
+    message: 'Server is reachable',
+    timestamp: new Date().toISOString(),
+    clientIP: req.ip,
+    userAgent: req.get('User-Agent')
+  });
+});
+
+// Manual cleanup endpoint for testing
+app.post('/api/debug/cleanup/:gameCode', (req, res) => {
+  const { gameCode } = req.params;
+  
+  const gameState = games.get(gameCode);
+  if (gameState) {
+    // Save to persistent storage
+    saveGameState(gameCode, gameState);
+    // Remove from active games
+    games.delete(gameCode);
+    console.log(`Manually moved game ${gameCode} to persistent storage`);
+    
+    res.json({
+      success: true,
+      message: `Game ${gameCode} moved to persistent storage`
+    });
+  } else {
+    res.status(404).json({ error: 'Game not found in active games' });
+  }
+});
+
+// Force move all games to persistent storage
+app.post('/api/debug/move-all-to-persistent', (req, res) => {
+  const movedGames = [];
+  
+  for (const [gameCode, gameState] of games.entries()) {
+    saveGameState(gameCode, gameState);
+    games.delete(gameCode);
+    movedGames.push(gameCode);
+  }
+  
+  res.json({
+    success: true,
+    message: `Moved ${movedGames.length} games to persistent storage`,
+    games: movedGames
+  });
+});
+
 // Serve React app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0'; // Bind to all network interfaces
+
+// Get local IP address for network access
+const os = require('os');
+function getLocalIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+}
+
+server.listen(PORT, HOST, () => {
+  const localIP = getLocalIP();
+  console.log(`Server running on ${HOST}:${PORT}`);
+  console.log(`Local access: http://localhost:${PORT}`);
+  console.log(`Network access: http://${localIP}:${PORT}`);
+  console.log(`Mobile devices should use: http://${localIP}:${PORT}`);
 });

@@ -4,19 +4,109 @@ import { ServerBoard } from './ServerBoard';
 import socketService from './socketService';
 
 function App() {
+  // Initialize playerName from localStorage synchronously
+  const getInitialPlayerName = () => {
+    try {
+      const savedSession = localStorage.getItem('briscolaUserSession');
+      if (savedSession) {
+        const session = JSON.parse(savedSession);
+        return session.playerName || '';
+      }
+    } catch (error) {
+      console.error('Error loading initial player name:', error);
+    }
+    return '';
+  };
+
   const [gameState, setGameState] = useState('menu'); // 'menu', 'lobby', 'game'
   const [gameConfig, setGameConfig] = useState(null);
-  const [playerName, setPlayerName] = useState('');
+  const [playerName, setPlayerName] = useState(getInitialPlayerName());
   const [players, setPlayers] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [serverGameState, setServerGameState] = useState(null);
   const [playerID, setPlayerID] = useState(null);
   const [gameReadyToStart, setGameReadyToStart] = useState(false);
+  const [userSession, setUserSession] = useState(null);
+  const [existingGames, setExistingGames] = useState([]);
+
+  // Check for existing games
+  const checkForExistingGames = async (socketId) => {
+    try {
+      const games = await socketService.getUserGames(socketId);
+      setExistingGames(games);
+      console.log('Found existing games:', games);
+    } catch (error) {
+      console.error('Error checking for existing games:', error);
+    }
+  };
+
+  // Check for existing games by player name
+  const checkForExistingGamesByName = async (playerName) => {
+    try {
+      console.log('Checking for existing games with playerName:', playerName);
+      
+      // Use new single-game-per-user API
+      const response = await fetch(`http://localhost:3001/api/user/${encodeURIComponent(playerName)}/game`);
+      if (response.ok) {
+        const gameData = await response.json();
+        console.log('Found user game:', gameData);
+        
+        if (gameData.gameCode) {
+          // Convert to the format expected by the UI
+          const game = {
+            gameCode: gameData.gameCode,
+            playerName: playerName,
+            lastUpdated: new Date().toISOString(),
+            gameStarted: gameData.gameStarted,
+            players: gameData.players
+          };
+          setExistingGames([game]);
+        } else {
+          setExistingGames([]);
+        }
+      } else {
+        console.log('No active game found for user');
+        setExistingGames([]);
+      }
+    } catch (error) {
+      console.error('Error checking for existing games by name:', error);
+    }
+  };
+
+  // Load user session from localStorage on app start
+  useEffect(() => {
+    const savedSession = localStorage.getItem('briscolaUserSession');
+    if (savedSession) {
+      try {
+        const session = JSON.parse(savedSession);
+        // Update session with new socketId when connected
+        setUserSession(session);
+        // Only set playerName if it's not already set
+        if (!playerName) {
+          setPlayerName(session.playerName);
+        }
+        console.log('Loaded user session:', session);
+        
+        // Check for existing games using player name instead of socketId
+        if (session.playerName) {
+          checkForExistingGamesByName(session.playerName);
+        }
+      } catch (error) {
+        console.error('Error loading user session:', error);
+        localStorage.removeItem('briscolaUserSession');
+      }
+    }
+  }, []);
 
   useEffect(() => {
     // Connect to server
     socketService.connect();
     setConnectionStatus('connecting');
+    
+    // Check for existing games if user has a session
+    if (userSession && userSession.socketId) {
+      checkForExistingGames(userSession.socketId);
+    }
 
     // Set up event listeners
     socketService.onPlayerJoined((data) => {
@@ -55,6 +145,38 @@ function App() {
       console.log('Our player:', ourPlayer);
       if (ourPlayer) {
         setPlayerID(ourPlayer.playerId);
+        
+        // Save user session to localStorage
+        const session = {
+          socketId: socketService.socket?.id,
+          playerName: ourPlayer.playerName,
+          playerId: ourPlayer.playerId,
+          gameCode: gameConfig?.gameCode,
+          timestamp: Date.now()
+        };
+        setUserSession(session);
+        localStorage.setItem('briscolaUserSession', JSON.stringify(session));
+        console.log('Saved user session:', session);
+        
+        // Also save game to localStorage for offline access
+        const gameInfo = {
+          gameCode: gameConfig?.gameCode,
+          playerName: ourPlayer.playerName,
+          gameMode: data.gameState?.gameMode || 'individual',
+          lastUpdated: Date.now()
+        };
+        
+        const savedGames = JSON.parse(localStorage.getItem('briscolaUserGames') || '[]');
+        const existingGameIndex = savedGames.findIndex(g => g.gameCode === gameInfo.gameCode && g.playerName === gameInfo.playerName);
+        
+        if (existingGameIndex >= 0) {
+          savedGames[existingGameIndex] = gameInfo;
+        } else {
+          savedGames.push(gameInfo);
+        }
+        
+        localStorage.setItem('briscolaUserGames', JSON.stringify(savedGames));
+        console.log('Saved game to localStorage:', gameInfo);
       }
       
       setGameState('game');
@@ -64,6 +186,37 @@ function App() {
       console.log('Game ready to start event received:', data);
       setGameReadyToStart(true);
     });
+
+    // Update user session with new socketId when connected
+    const handleConnect = () => {
+      console.log('Connected to server, updating session...');
+      if (userSession) {
+        const updatedSession = {
+          ...userSession,
+          socketId: socketService.socket.id,
+          timestamp: Date.now()
+        };
+        setUserSession(updatedSession);
+        localStorage.setItem('briscolaUserSession', JSON.stringify(updatedSession));
+        console.log('Updated user session with new socketId:', updatedSession);
+        
+        // Check for existing games with new socketId
+        checkForExistingGames(updatedSession.socketId);
+      }
+    };
+
+    // Set up connection listener
+    if (socketService.socket) {
+      socketService.socket.on('connect', handleConnect);
+    } else {
+      // If socket not ready, wait for it
+      const checkSocket = setInterval(() => {
+        if (socketService.socket) {
+          socketService.socket.on('connect', handleConnect);
+          clearInterval(checkSocket);
+        }
+      }, 100);
+    }
 
     socketService.onGameStateUpdate((data) => {
       console.log('Game state updated:', data);
@@ -185,8 +338,110 @@ function App() {
     }
   };
 
+  const handleRejoinGame = async (gameCode) => {
+    try {
+      console.log('Rejoining game:', gameCode);
+      setConnectionStatus('rejoining');
+      
+      // Try to rejoin the existing game directly
+      const result = await socketService.joinGame(playerName, gameCode);
+      console.log('Rejoin game result:', result);
+      
+      // Check if this is a started game or lobby
+      if (result.gameState) {
+        // Game is already started, go directly to game
+        setGameConfig({
+          gameCode: gameCode,
+          isHost: false,
+          mode: result.gameState.gameMode || 'individual',
+          players: result.players || []
+        });
+        setPlayers(result.players || []);
+        setServerGameState(result.gameState);
+        setGameState('game');
+        
+        // Find our player ID
+        const ourPlayer = result.players.find(p => p.playerName === playerName);
+        if (ourPlayer) {
+          setPlayerID(ourPlayer.playerId);
+        }
+      } else {
+        // Game is in lobby
+        setGameConfig({
+          gameCode: gameCode,
+          isHost: false,
+          mode: result.gameMode,
+          players: result.players || []
+        });
+        setPlayers(result.players || []);
+        setGameState('lobby');
+      }
+      
+      setConnectionStatus('connected');
+    } catch (error) {
+      console.error('Error rejoining game:', error);
+      setConnectionStatus('error');
+      alert(`Error rejoining game: ${error.message || 'Unknown error'}. The game might not exist or you might not be part of it.`);
+    }
+  };
+
+  const handleContinueGame = async (gameCode) => {
+    try {
+      console.log('Continuing game offline:', gameCode);
+      setConnectionStatus('continuing');
+      
+      // Try to join the game normally first
+      const result = await socketService.joinGame(playerName, gameCode);
+      console.log('Continue game result:', result);
+      
+      // Check if this is a started game or lobby
+      if (result.gameState) {
+        // Game is already started, go directly to game
+        setGameConfig({
+          gameCode: gameCode,
+          isHost: false,
+          mode: result.gameState.gameMode || 'individual',
+          players: result.players || []
+        });
+        setPlayers(result.players || []);
+        setServerGameState(result.gameState);
+        setGameState('game');
+        
+        // Find our player ID
+        const ourPlayer = result.players.find(p => p.playerName === playerName);
+        if (ourPlayer) {
+          setPlayerID(ourPlayer.playerId);
+        }
+      } else {
+        // Game is in lobby
+        setGameConfig({
+          gameCode: gameCode,
+          isHost: false,
+          mode: result.gameMode,
+          players: result.players || []
+        });
+        setPlayers(result.players || []);
+        setGameState('lobby');
+      }
+      
+      setConnectionStatus('connected');
+    } catch (error) {
+      console.error('Error continuing game:', error);
+      setConnectionStatus('error');
+      alert(`Error continuing game: ${error.message || 'Unknown error'}. The game might not exist or you might not be part of it.`);
+    }
+  };
+
   if (gameState === 'menu') {
-    return <Menu onStartGame={handleStartGame} onJoinGame={handleJoinGame} />;
+    console.log('Rendering Menu with playerName:', playerName);
+    return <Menu 
+      onStartGame={handleStartGame} 
+      onJoinGame={handleJoinGame} 
+      defaultPlayerName={playerName}
+      existingGames={existingGames}
+      onRejoinGame={handleRejoinGame}
+      onContinueGame={handleContinueGame}
+    />;
   }
 
   if (gameState === 'lobby') {
@@ -569,6 +824,8 @@ function App() {
         gameState={serverGameState} 
         players={players} 
         playerID={playerID}
+        gameConfig={gameConfig}
+        userSession={userSession}
       />
     </div>
   );

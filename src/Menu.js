@@ -1,10 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-function Menu({ onStartGame, onJoinGame }) {
-  const [playerName, setPlayerName] = useState('');
+function Menu({ onStartGame, onJoinGame, defaultPlayerName = '', existingGames = [], onRejoinGame, onContinueGame }) {
+  console.log('Menu component received defaultPlayerName:', defaultPlayerName);
+  const [playerName, setPlayerName] = useState(defaultPlayerName);
   const [gameCode, setGameCode] = useState('');
   const [gameMode, setGameMode] = useState('2player');
   const [showJoinForm, setShowJoinForm] = useState(false);
+
+  // Update playerName when defaultPlayerName changes
+  useEffect(() => {
+    if (defaultPlayerName && defaultPlayerName !== playerName) {
+      setPlayerName(defaultPlayerName);
+      console.log('Updated playerName from defaultPlayerName:', defaultPlayerName);
+    }
+  }, [defaultPlayerName]);
 
   const handleCreateGame = () => {
     if (!playerName.trim()) {
@@ -161,15 +170,16 @@ function Menu({ onStartGame, onJoinGame }) {
                 width: '100%',
                 padding: '15px',
                 fontSize: '18px',
-                backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                backgroundColor: '#2196F3',
                 color: 'white',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
+                border: 'none',
                 borderRadius: '8px',
                 cursor: 'pointer',
-                transition: 'all 0.3s ease'
+                transition: 'all 0.3s ease',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)'
               }}
-              onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'}
-              onMouseOut={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+              onMouseOver={(e) => e.target.style.backgroundColor = '#1976D2'}
+              onMouseOut={(e) => e.target.style.backgroundColor = '#2196F3'}
             >
               Join Existing Game
             </button>
@@ -234,6 +244,120 @@ function Menu({ onStartGame, onJoinGame }) {
             </button>
           </div>
         )}
+
+        {/* Existing Games */}
+        {existingGames.length > 0 && (
+          <div style={{
+            marginTop: '20px',
+            padding: '20px',
+            backgroundColor: 'rgba(76, 175, 80, 0.2)',
+            borderRadius: '10px',
+            border: '1px solid rgba(76, 175, 80, 0.3)'
+          }}>
+            <h3 style={{ marginBottom: '15px', color: '#4CAF50' }}>Continue Your Games:</h3>
+            {existingGames.map((game, index) => (
+              <div key={index} style={{
+                marginBottom: '10px',
+                padding: '10px',
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                borderRadius: '8px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <div style={{ fontWeight: 'bold' }}>Game: {game.gameCode}</div>
+                  <div style={{ fontSize: '12px', opacity: 0.8 }}>
+                    Last updated: {new Date(game.lastUpdated).toLocaleString()}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => onRejoinGame(game.gameCode)}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#4CAF50',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '5px',
+                      cursor: 'pointer',
+                      fontSize: '14px'
+                    }}
+                  >
+                    Rejoin
+                  </button>
+                  <button
+                    onClick={() => onContinueGame(game.gameCode)}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#FF9800',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '5px',
+                      cursor: 'pointer',
+                      fontSize: '14px'
+                    }}
+                  >
+                    Continue Game
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Always show Join Game option */}
+        <div style={{
+          marginTop: '20px',
+          padding: '20px',
+          backgroundColor: 'rgba(33, 150, 243, 0.1)',
+          borderRadius: '10px',
+          border: '1px solid rgba(33, 150, 243, 0.3)'
+        }}>
+          <h3 style={{ marginBottom: '15px', color: '#2196F3' }}>Join Game by Code:</h3>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <input
+              type="text"
+              placeholder="Enter game code (e.g., 312048)"
+              value={gameCode}
+              onChange={(e) => setGameCode(e.target.value)}
+              style={{
+                flex: 1,
+                padding: '10px',
+                fontSize: '16px',
+                border: 'none',
+                borderRadius: '8px',
+                backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                color: '#333'
+              }}
+            />
+            <button
+              onClick={handleJoinGame}
+              style={{
+                padding: '10px 20px',
+                fontSize: '16px',
+                backgroundColor: '#2196F3',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseOver={(e) => e.target.style.backgroundColor = '#1976D2'}
+              onMouseOut={(e) => e.target.style.backgroundColor = '#2196F3'}
+            >
+              Join
+            </button>
+          </div>
+          <div style={{ 
+            marginTop: '10px', 
+            fontSize: '12px', 
+            color: 'rgba(255, 255, 255, 0.7)',
+            textAlign: 'center'
+          }}>
+            If you have a game code, enter it here to join the game
+          </div>
+        </div>
 
         <div style={{
           marginTop: '30px',
