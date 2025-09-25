@@ -243,11 +243,21 @@ function dealCards(deck, numPlayers) {
 }
 
 function getCardRank(value) {
+  // Briscola trick order (highest to lowest): A, 3, K, Q, J, 7, 6, 5, 4, 2
+  // Use standard letters from our deck values
   const ranks = {
-    'Asso': 11, 'Tre': 10, 'Re': 4, 'Cavallo': 3, 'Fante': 2,
-    'Sette': 1, 'Sei': 0, 'Cinque': 0, 'Quattro': 0, 'Due': 0
+    'A': 9,
+    '3': 8,
+    'K': 7,
+    'Q': 6,
+    'J': 5,
+    '7': 4,
+    '6': 3,
+    '5': 2,
+    '4': 1,
+    '2': 0
   };
-  return ranks[value];
+  return ranks[value] ?? -1;
 }
 
 function getWinningCard(cards, trumpSuit) {
@@ -946,18 +956,7 @@ io.on('connection', (socket) => {
         return;
       }
       
-      // Check if player has no cards to play (game should end)
-      if (playerHand.length === 0) {
-        console.log(`Player ${playerId} has no cards to play, ending game`);
-        game.gamePhase = 'finished';
-        
-        // Broadcast game over
-        io.to(gameCode).emit('gameStateUpdate', {
-          gameState: game,
-          lastMove: { playerId, move, args }
-        });
-        return;
-      }
+      // Do not prematurely end the game here; finalization happens after all 40 cards are played
       
       if (game.currentTrick.length >= gameState.players.size) {
         socket.emit('moveError', { message: 'Trick already complete' });
@@ -1021,32 +1020,31 @@ io.on('connection', (socket) => {
           game.currentTrick = [];
 
           // After scoring, deal cards in order starting from trick winner
-          // Standard Briscola dealing: winner draws first, then clockwise; the last face-up trump goes to the last drawer
+          // Standard Briscola dealing:
+          // - Winner draws first from the face-down stock (game.deck)
+          // - Continue clockwise until each player has drawn once
+          // - When the stock runs out, the face-up trump card is taken by the next player in order (exactly once)
           const numPlayers = gameState.players.size;
           for (let offset = 0; offset < numPlayers; offset++) {
             const pid = (winningPlayer + offset) % numPlayers;
-            // If more than 1 card remains in the deck, draw face-down
-            if (game.deck.length > 1) {
+            if (game.deck.length > 0) {
               const drawn = game.deck.pop();
               game.hands[pid].push(drawn);
               console.log(`Post-trick draw: Player ${pid} drew`, drawn);
-            } else if (game.deck.length === 1 && !game.trumpTaken && offset === numPlayers - 1) {
-              // Last remaining face-up trump card goes to the last to draw in sequence
-              const trump = game.deck.pop();
-              game.hands[pid].push(trump);
+            } else if (!game.trumpTaken) {
+              game.hands[pid].push(game.trumpCard);
               game.trumpTaken = true;
-              console.log(`Trump dealt to player ${pid}:`, trump);
+              console.log(`Trump dealt to player ${pid}:`, game.trumpCard);
             }
           }
           
-          // Check if game is over
+          // Check if game is over only after resolving trick
           const totalCardsPlayed = game.playedCards.length;
           const totalCards = 40; // 40 cards in a Briscola deck
-          // End only when ALL cards are played (including last hand)
           if (totalCardsPlayed >= totalCards) {
             game.gamePhase = 'finished';
             console.log('Game finished! All cards played:', totalCardsPlayed);
-            cleanupFinishedGame(gameCode);
+            // No cleanup here immediately; let clients render Game Over first. Cleanup can be triggered externally.
           }
           
           // Next player leads
@@ -1567,7 +1565,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0'; // Bind to all network interfaces
 
 // Get local IP address for network access

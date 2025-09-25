@@ -106,7 +106,7 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
       backgroundColor: isCurrentPlayerTurn ? 'rgba(33, 150, 243, 0.3)' : 'rgba(0, 0, 0, 0.2)',
       borderRadius: '8px',
       border: isCurrentPlayerTurn ? '2px solid #2196F3' : '1px solid rgba(255, 255, 255, 0.3)',
-      zIndex: 10
+      zIndex: pos === 'top' ? 50 : 10
     };
 
     switch (pos) {
@@ -276,6 +276,7 @@ export function ServerBoard({ gameState, players, playerID, gameConfig, userSess
       return localStorage.getItem('briscolaSicilianMode') === '1';
     } catch (_) { return false; }
   });
+  const [deckActive, setDeckActive] = useState(false);
 
   useEffect(() => {
     if (gameState) {
@@ -398,7 +399,7 @@ export function ServerBoard({ gameState, players, playerID, gameConfig, userSess
   }
 
   return (
-    <div style={{ 
+      <div style={{ 
       width: '100vw',
       height: '100vh',
       fontFamily: 'Arial, sans-serif',
@@ -490,29 +491,53 @@ export function ServerBoard({ gameState, players, playerID, gameConfig, userSess
       </div>
 
       {/* Center Area - Deck and Played Cards */}
-      <div style={{
-        position: 'absolute',
-        top: '50%',
-        left: localGameState.hands?.length === 2 ? '65%' : '50%',
-        transform: localGameState.hands?.length === 2 ? 'translate(-50%, -50%)' : 'translate(-50%, -50%)',
-        display: 'flex',
-        flexDirection: (localGameState.hands?.length === 2 ? 'row' : 'column'),
-        alignItems: 'center',
-        gap: localGameState.hands?.length === 2 ? '40px' : '0',
-        zIndex: 40
-      }}>
+      {(() => {
+        const isTwoPlayers = Array.isArray(localGameState.hands) && localGameState.hands.length === 2;
+        const isShortHeight = window.innerHeight <= 540 || (window.innerWidth > window.innerHeight && window.innerHeight <= 600);
+        const shouldDock = isShortHeight;
+        const deckAtSide = shouldDock || isTwoPlayers;
+        const deckContainerStyle = deckAtSide ? {
+          position: 'absolute',
+          top: '50%',
+          right: '16px',
+          transform: 'translateY(-50%)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '8px',
+          zIndex: 40,
+          opacity: deckActive ? 1 : 0.5
+        } : {
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          display: 'flex',
+          flexDirection: (isTwoPlayers ? 'row' : 'column'),
+          alignItems: 'center',
+          gap: isTwoPlayers ? '40px' : '0',
+          zIndex: 40,
+          opacity: 1
+        };
+        return (
+          <div 
+            style={deckContainerStyle}
+            onMouseEnter={() => setDeckActive(true)}
+            onMouseLeave={() => setDeckActive(false)}
+            onClick={() => setDeckActive(v => !v)}
+          >
         {/* Deck Display */}
         <div style={{
           position: 'relative',
-          marginBottom: localGameState.hands?.length === 2 ? '0' : '20px',
-          order: localGameState.hands?.length === 2 ? 2 : 0
+          marginBottom: isTwoPlayers ? '0' : '20px',
+          order: isTwoPlayers ? 2 : 0
         }}>
           
           
           {/* Trump card sticking out */}
           <div style={{
             position: 'absolute',
-            top: window.innerWidth < 768 ? '-15px' : '-20px',
+            top: deckAtSide ? (window.innerWidth < 768 ? '-15px' : '-20px') : (window.innerWidth < 768 ? '-15px' : '-20px'),
             left: '50%',
             transform: 'translateX(-50%)',
             width: window.innerWidth < 768 ? '45px' : '60px',
@@ -522,44 +547,27 @@ export function ServerBoard({ gameState, players, playerID, gameConfig, userSess
             borderRadius: '6px',
             border: '2px solid #ff6b35',
             boxShadow: '0 6px 12px rgba(0,0,0,0.4)',
-            zIndex: 41
+            zIndex: 0
           }} />
 
            {/* Deck pile */}
-           <div style={{
-             width: window.innerWidth < 768 ? '50px' : '66px',
-             height: window.innerWidth < 768 ? '68px' : '90px',
-             backgroundImage: 'url(/cards/cardBack.png)',
-             backgroundSize: 'cover',
-             borderRadius: '2px',
-             border: '2px solid #333',
-             boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
-             position: 'relative',
-             transform: 'rotate(90deg)'
-           }} />
+            <div style={{
+              width: window.innerWidth < 768 ? '50px' : '66px',
+              height: window.innerWidth < 768 ? '68px' : '90px',
+              backgroundImage: 'url(/cards/cardBack.png)',
+              backgroundSize: 'cover',
+              borderRadius: '2px',
+              border: '2px solid #333',
+              boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+              position: 'relative',
+              transform: 'rotate(90deg)'
+            }} />
         </div>
 
-        {/* Played Cards in Center - Only show if no cards played yet */}
-        {localGameState.currentTrick.length === 0 && (
-          <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-            gap: '10px',
-            minWidth: '200px',
-            minHeight: '100px',
-            alignItems: 'center'
-          }}>
-            <div style={{
-              color: 'rgba(255, 255, 255, 0.6)',
-              fontSize: '14px',
-              textAlign: 'center'
-            }}>
-              Waiting for cards to be played...
-            </div>
+        {/* Removed waiting placeholder */}
           </div>
-        )}
-      </div>
+        );
+      })()}
 
       {/* Player Areas */}
       {players.map((player) => (
