@@ -75,17 +75,18 @@ class SocketService {
       }
 
       this.playerName = playerName;
-      this.gameCode = gameCode;
+      this.gameCode = gameCode || this.gameCode; // keep existing if none provided
       this.isHost = false;
 
       console.log('Emitting joinGame event');
       this.socket.emit('joinGame', {
         playerName,
-        gameCode
+        gameCode: (gameCode || this.gameCode)
       });
 
       this.socket.once('gameJoined', (data) => {
         console.log('Received gameJoined event:', data);
+        if (data?.gameCode) this.gameCode = data.gameCode; // persist code from server
         resolve(data);
       });
 
@@ -96,6 +97,7 @@ class SocketService {
 
       this.socket.once('gameStarted', (data) => {
         console.log('Received gameStarted event:', data);
+        if (data?.gameCode) this.gameCode = data.gameCode; // persist code from server
         resolve(data);
       });
 

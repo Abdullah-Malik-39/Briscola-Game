@@ -28,6 +28,38 @@ function App() {
   const [gameReadyToStart, setGameReadyToStart] = useState(false);
   const [userSession, setUserSession] = useState(null);
   const [existingGames, setExistingGames] = useState([]);
+  const [didPruneExistingOnce, setDidPruneExistingOnce] = useState(false);
+
+  // Remove stale local games that no longer exist on the server
+  const reconcileLocalWithServerByName = async (playerName) => {
+    try {
+      const rawAPI = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+      const API = rawAPI.endsWith(':3000') ? rawAPI.replace(':3000', ':3001') : rawAPI;
+      const saved = JSON.parse(localStorage.getItem('briscolaUserGames') || '[]');
+      const norm = (s) => (s || '').trim().toLowerCase();
+      const mine = saved.filter(g => g && norm(g.playerName) === norm(playerName) && g.gameCode);
+      if (mine.length === 0) return;
+      const results = await Promise.allSettled(mine.map(g => fetch(`${API}/api/games/${g.gameCode}`)));
+      const validCodes = new Set(
+        results.map((r, i) => ({ r, code: mine[i].gameCode }))
+               .filter(x => x.r.status === 'fulfilled' && x.r.value && x.r.value.ok)
+               .map(x => x.code)
+      );
+      const pruned = saved.filter(g => g && (norm(g.playerName) === norm(playerName) ? validCodes.has(g.gameCode) : true));
+      localStorage.setItem('briscolaUserGames', JSON.stringify(pruned));
+      // Update UI list for this player
+      const prunedForPlayer = pruned.filter(g => norm(g.playerName) === norm(playerName)).map(g => ({
+        gameCode: g.gameCode,
+        playerName: g.playerName,
+        lastUpdated: g.lastUpdated || Date.now(),
+        gameStarted: true,
+        players: []
+      }));
+      if (prunedForPlayer.length >= 0) setExistingGames(prunedForPlayer);
+    } catch (err) {
+      console.warn('Reconcile local games failed:', err);
+    }
+  };
 
   // Check for existing games
   const checkForExistingGames = async (socketId) => {
@@ -46,7 +78,8 @@ function App() {
       console.log('Checking for existing games with playerName:', playerName);
       
       // Use new single-game-per-user API
-      const API = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+      const rawAPI = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+      const API = rawAPI.endsWith(':3000') ? rawAPI.replace(':3000', ':3001') : rawAPI;
       const response = await fetch(`${API}/api/user/${encodeURIComponent(playerName)}/game`);
       if (response.ok) {
         const gameData = await response.json();
@@ -63,14 +96,48 @@ function App() {
           };
           setExistingGames([game]);
         } else {
-          setExistingGames([]);
+          // Fallback: try multi-game listing by name
+          try {
+            const resp2 = await fetch(`${API}/api/user/name/${encodeURIComponent(playerName)}/games`);
+            if (resp2.ok) {
+              const data2 = await resp2.json();
+              const games = (data2.games || []).map(g => ({
+                gameCode: g.gameCode,
+                playerName,
+                lastUpdated: g.lastUpdated || new Date().toISOString(),
+                gameStarted: !!g.gameState,
+                players: []
+              }));
+              if (games.length > 0) {
+                setExistingGames(games);
+                return;
+              }
+            }
+          } catch (_) {}
+          // Final fallback: localStorage cache (reconciled with server)
+          try {
+            await reconcileLocalWithServerByName(playerName);
+          } catch (_) {
+            setExistingGames([]);
+          }
         }
       } else {
         console.log('No active game found for user');
-        setExistingGames([]);
+        // Try localStorage as offline fallback (reconciled)
+        try {
+          await reconcileLocalWithServerByName(playerName);
+        } catch (_) {
+          setExistingGames([]);
+        }
       }
     } catch (error) {
       console.error('Error checking for existing games by name:', error);
+      // Offline/local fallback (reconciled)
+      try {
+        await reconcileLocalWithServerByName(playerName);
+      } catch (_) {
+        setExistingGames([]);
+      }
     }
   };
 
@@ -91,6 +158,8 @@ function App() {
         // Check for existing games using player name instead of socketId
         if (session.playerName) {
           checkForExistingGamesByName(session.playerName);
+          // Also prune stale local games for this user
+          reconcileLocalWithServerByName(session.playerName);
         }
       } catch (error) {
         console.error('Error loading user session:', error);
@@ -98,6 +167,34 @@ function App() {
       }
     }
   }, []);
+
+  // Whenever we have a non-empty local list, attempt a prune pass in the background
+  useEffect(() => {
+    if (existingGames && existingGames.length > 0 && playerName) {
+      reconcileLocalWithServerByName(playerName);
+    }
+  }, [existingGames.length, playerName]);
+
+  // Extra safety: prune whatever is currently shown in existingGames by probing server directly
+  useEffect(() => {
+    const doPrune = async () => {
+      try {
+        if (!existingGames || existingGames.length === 0 || didPruneExistingOnce) return;
+        const API = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+        const results = await Promise.allSettled(
+          existingGames.map(g => fetch(`${API}/api/games/${g.gameCode}`))
+        );
+        const next = existingGames.filter((g, i) => results[i].status === 'fulfilled' && results[i].value && results[i].value.ok);
+        if (next.length !== existingGames.length) {
+          setExistingGames(next);
+        }
+        setDidPruneExistingOnce(true);
+      } catch (_) {
+        // ignore
+      }
+    };
+    doPrune();
+  }, [existingGames]);
 
   useEffect(() => {
     // Connect to server
@@ -152,7 +249,7 @@ function App() {
           socketId: socketService.socket?.id,
           playerName: ourPlayer.playerName,
           playerId: ourPlayer.playerId,
-          gameCode: gameConfig?.gameCode,
+          gameCode: (data.gameCode || gameConfig?.gameCode || null),
           timestamp: Date.now()
         };
         setUserSession(session);
@@ -161,22 +258,25 @@ function App() {
         
         // Also save game to localStorage for offline access
         const gameInfo = {
-          gameCode: gameConfig?.gameCode,
+          gameCode: (data.gameCode || gameConfig?.gameCode || null),
           playerName: ourPlayer.playerName,
           gameMode: data.gameState?.gameMode || 'individual',
           lastUpdated: Date.now()
         };
         
         const savedGames = JSON.parse(localStorage.getItem('briscolaUserGames') || '[]');
-        const existingGameIndex = savedGames.findIndex(g => g.gameCode === gameInfo.gameCode && g.playerName === gameInfo.playerName);
+        // Drop invalid entries without a gameCode
+        const sanitized = savedGames.filter(g => g && g.gameCode);
+        const existingGameIndex = sanitized.findIndex(g => g.gameCode === gameInfo.gameCode && g.playerName === gameInfo.playerName);
         
-        if (existingGameIndex >= 0) {
-          savedGames[existingGameIndex] = gameInfo;
-        } else {
-          savedGames.push(gameInfo);
+        if (gameInfo.gameCode) {
+          if (existingGameIndex >= 0) {
+            sanitized[existingGameIndex] = gameInfo;
+          } else {
+            sanitized.push(gameInfo);
+          }
+          localStorage.setItem('briscolaUserGames', JSON.stringify(sanitized));
         }
-        
-        localStorage.setItem('briscolaUserGames', JSON.stringify(savedGames));
         console.log('Saved game to localStorage:', gameInfo);
       }
       

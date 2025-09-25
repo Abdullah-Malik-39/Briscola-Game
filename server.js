@@ -200,6 +200,35 @@ function cleanupFinishedGame(gameCode) {
   console.log(`Game ${gameCode} completely cleaned up`);
 }
 
+// Forfeit and delete a game globally (used when a player creates a new game)
+function forfeitAndDeleteGame(gameCode) {
+  try {
+    const active = games.get(gameCode);
+    const persistentData = persistentGames.get(gameCode);
+    const affectedNames = new Set();
+    if (active && active.players) {
+      for (const p of active.players.values()) {
+        if (p?.playerName) affectedNames.add(normalizeName(p.playerName));
+      }
+    }
+    if (persistentData) {
+      if (Array.isArray(persistentData.players)) {
+        persistentData.players.forEach(p => p?.playerName && affectedNames.add(normalizeName(p.playerName)));
+      }
+      if (Array.isArray(persistentData.registeredPlayers)) {
+        persistentData.registeredPlayers.forEach(r => r?.playerName && affectedNames.add(normalizeName(r.playerName)));
+      }
+    }
+    affectedNames.forEach(n => userGames.delete(n));
+    games.delete(gameCode);
+    persistentGames.delete(gameCode);
+    savePersistentGamesToFile();
+    console.log(`Forfeited and deleted game ${gameCode} for players:`, Array.from(affectedNames));
+  } catch (err) {
+    console.error('Error forfeiting game', gameCode, err);
+  }
+}
+
 // Briscola game logic
 const SUITS = ['Clubs', 'Hearts', 'Diamonds', 'Spades'];
 const VALUES = ['A', '2', '3', '4', '5', '6', '7', 'J', 'Q', 'K'];
@@ -360,13 +389,8 @@ io.on('connection', (socket) => {
     const existingGameCode = userGames.get(normalizeName(playerName));
     if (existingGameCode) {
       console.log(`User ${playerName} already has a game: ${existingGameCode}`);
-      // Clean up old game if it exists
-      if (games.has(existingGameCode)) {
-        games.delete(existingGameCode);
-      }
-      if (persistentGames.has(existingGameCode)) {
-        persistentGames.delete(existingGameCode);
-      }
+      // Forfeit the previous game for all participants
+      forfeitAndDeleteGame(existingGameCode);
     }
     
     // Create game state
@@ -411,31 +435,8 @@ io.on('connection', (socket) => {
     const userCurrentGame = userGames.get(normalizedName);
     if (userCurrentGame && userCurrentGame !== gameCode) {
       console.log(`Overriding previous game for ${playerName}: ${userCurrentGame} -> ${gameCode}`);
-      // Remove player from active previous game
-      const prevActive = games.get(userCurrentGame);
-      if (prevActive) {
-        // Remove from players Map by name
-        for (const [sid, p] of Array.from(prevActive.players.entries())) {
-          if (normalizeName(p.playerName) === normalizedName) {
-            prevActive.players.delete(sid);
-          }
-        }
-        // Remove from roster
-        prevActive.registeredPlayers = (prevActive.registeredPlayers || []).filter(r => normalizeName(r.playerName) !== normalizedName);
-        saveGameState(userCurrentGame, prevActive);
-        if (prevActive.players.size === 0) {
-          games.delete(userCurrentGame);
-          console.log(`Previous game ${userCurrentGame} had no players left and was removed from active games`);
-        }
-      }
-      // Remove from persistent previous game
-      const prevPersist = persistentGames.get(userCurrentGame);
-      if (prevPersist) {
-        prevPersist.players = (prevPersist.players || []).filter(p => normalizeName(p.playerName) !== normalizedName);
-        prevPersist.registeredPlayers = (prevPersist.registeredPlayers || []).filter(r => normalizeName(r.playerName) !== normalizedName);
-        persistentGames.set(userCurrentGame, prevPersist);
-        savePersistentGamesToFile();
-      }
+      // Forfeit previous game globally when a player joins a different one
+      forfeitAndDeleteGame(userCurrentGame);
       // Update mapping to new game
       userGames.set(normalizedName, gameCode);
     }
@@ -993,6 +994,12 @@ io.on('connection', (socket) => {
         
         // Add delay before processing the trick completion
         setTimeout(() => {
+          // Guard: if a player disconnected during the delay, ensure seating/arrays are still consistent
+          const seatsCount = Array.isArray(game.hands) ? game.hands.length : 0;
+          if (seatsCount === 0) {
+            console.warn('No seats available at trick resolution; aborting');
+            return;
+          }
           const winningCard = getWinningCard(game.currentTrick, game.trumpSuit);
           const winningPlayer = game.currentTrick.find(card => 
             card.suit === winningCard.suit && card.value === winningCard.value
@@ -1020,21 +1027,21 @@ io.on('connection', (socket) => {
           game.currentTrick = [];
 
           // After scoring, deal cards in order starting from trick winner
-          // Standard Briscola dealing:
-          // - Winner draws first from the face-down stock (game.deck)
-          // - Continue clockwise until each player has drawn once
-          // - When the stock runs out, the face-up trump card is taken by the next player in order (exactly once)
-          const numPlayers = gameState.players.size;
-          for (let offset = 0; offset < numPlayers; offset++) {
-            const pid = (winningPlayer + offset) % numPlayers;
+          // Deterministic per-seat dealing (robust if a player disconnects during the delay):
+          // - Iterate over fixed seat indices based on hands length
+          // - Winner's seat draws first, then clockwise through all seats
+          // - If stock is gone, give the face-up trump to the last drawer (once)
+          const seats = game.hands.length;
+          for (let offset = 0; offset < seats; offset++) {
+            const pid = (winningPlayer + offset) % seats;
             if (game.deck.length > 0) {
               const drawn = game.deck.pop();
               game.hands[pid].push(drawn);
-              console.log(`Post-trick draw: Player ${pid} drew`, drawn);
-            } else if (!game.trumpTaken) {
+              console.log(`Post-trick draw: Seat ${pid} drew`, drawn);
+            } else if (!game.trumpTaken && offset === seats - 1) {
               game.hands[pid].push(game.trumpCard);
               game.trumpTaken = true;
-              console.log(`Trump dealt to player ${pid}:`, game.trumpCard);
+              console.log(`Trump dealt to seat ${pid}:`, game.trumpCard);
             }
           }
           
