@@ -311,7 +311,9 @@ function initializeGameState(gameState) {
     currentPlayer: 0,
     playerNames: {},
     teams: {},
-    gameMode: gameState.gameMode
+    gameMode: gameState.gameMode,
+    // Track if the face-up trump card has been taken
+    trumpTaken: false
   };
   
   console.log('Game state created:', {
@@ -974,34 +976,7 @@ io.on('connection', (socket) => {
       });
       game.playedCards.push(playedCard);
       
-      // Draw a new card immediately after playing (if deck has cards)
-      if (game.deck.length > 0) {
-        const newCard = game.deck.pop();
-        game.hands[playerId].push(newCard);
-        console.log(`Player ${playerId} drew card:`, newCard);
-        console.log(`Player ${playerId} hand length after draw:`, game.hands[playerId].length);
-        console.log(`Deck length after draw:`, game.deck.length);
-      } else {
-        console.log(`No cards in deck to draw for player ${playerId}`);
-      }
-      
-      // Force ensure all players have 3 cards if deck has cards
-      for (let i = 0; i < game.hands.length; i++) {
-        while (game.hands[i].length < 3 && game.deck.length > 0) {
-          const extraCard = game.deck.pop();
-          game.hands[i].push(extraCard);
-          console.log(`Force drew extra card for player ${i}:`, extraCard);
-        }
-      }
-      
-      // Special case: if deck is empty and only 1 card left (trump card), 
-      // the last player should get it
-      if (game.deck.length === 1 && game.hands.every(hand => hand.length < 3)) {
-        const lastCard = game.deck.pop();
-        // Give the last card to the current player
-        game.hands[playerId].push(lastCard);
-        console.log(`Last card (trump) given to player ${playerId}:`, lastCard);
-      }
+      // Defer drawing cards until the trick is complete and a winner is known
       
       // If this completes a trick, determine winner and update scores
       if (game.currentTrick.length === gameState.players.size) {
@@ -1044,29 +1019,33 @@ io.on('connection', (socket) => {
           
           // Clear current trick
           game.currentTrick = [];
+
+          // After scoring, deal cards in order starting from trick winner
+          // Standard Briscola dealing: winner draws first, then clockwise; the last face-up trump goes to the last drawer
+          const numPlayers = gameState.players.size;
+          for (let offset = 0; offset < numPlayers; offset++) {
+            const pid = (winningPlayer + offset) % numPlayers;
+            // If more than 1 card remains in the deck, draw face-down
+            if (game.deck.length > 1) {
+              const drawn = game.deck.pop();
+              game.hands[pid].push(drawn);
+              console.log(`Post-trick draw: Player ${pid} drew`, drawn);
+            } else if (game.deck.length === 1 && !game.trumpTaken && offset === numPlayers - 1) {
+              // Last remaining face-up trump card goes to the last to draw in sequence
+              const trump = game.deck.pop();
+              game.hands[pid].push(trump);
+              game.trumpTaken = true;
+              console.log(`Trump dealt to player ${pid}:`, trump);
+            }
+          }
           
           // Check if game is over
           const totalCardsPlayed = game.playedCards.length;
           const totalCards = 40; // 40 cards in a Briscola deck
-          
-          // Game ends when all cards are played (including the trump card)
+          // End only when ALL cards are played (including last hand)
           if (totalCardsPlayed >= totalCards) {
             game.gamePhase = 'finished';
             console.log('Game finished! All cards played:', totalCardsPlayed);
-            cleanupFinishedGame(gameCode);
-          }
-          
-          // Also check if deck is empty and no more cards to draw
-          if (game.deck.length === 0 && game.hands.every(hand => hand.length === 0)) {
-            game.gamePhase = 'finished';
-            console.log('Game finished! Deck empty and no cards in hands');
-            cleanupFinishedGame(gameCode);
-          }
-          
-          // Check if any player has no cards left (game should end)
-          if (game.hands.some(hand => hand.length === 0)) {
-            game.gamePhase = 'finished';
-            console.log('Game finished! At least one player has no cards left');
             cleanupFinishedGame(gameCode);
           }
           
@@ -1588,7 +1567,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0'; // Bind to all network interfaces
 
 // Get local IP address for network access

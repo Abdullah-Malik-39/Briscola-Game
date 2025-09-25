@@ -79,17 +79,16 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
   const isCurrentPlayerTurn = currentPlayer === player.playerId;
   const isOwnPlayer = player.playerId === playerID;
   const playerHand = gameState.hands[player.playerId] || [];
+  const isTwoPlayers = Array.isArray(gameState.hands) && gameState.hands.length === 2;
   
   // Find the card this player played in the current trick
   const playedCard = gameState.currentTrick.find(card => card.player === player.playerId);
   
   const getPlayerPosition = (playerId) => {
-    const positions = {
-      0: 'top',    // North
-      1: 'right',  // East  
-      2: 'bottom', // South
-      3: 'left'    // West
-    };
+    if (isTwoPlayers) {
+      return playerId === 0 ? 'bottom' : 'top';
+    }
+    const positions = { 0: 'top', 1: 'right', 2: 'bottom', 3: 'left' };
     return positions[playerId] || 'bottom';
   };
 
@@ -247,7 +246,8 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          margin: '10px'
+          margin: '10px',
+          zIndex: 60
         }}>
           <div style={{
             fontSize: '10px',
@@ -271,6 +271,11 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
 export function ServerBoard({ gameState, players, playerID, gameConfig, userSession }) {
   const [localGameState, setLocalGameState] = useState(gameState);
   const [error, setError] = useState(null);
+  const [sicilianMode, setSicilianMode] = useState(() => {
+    try {
+      return localStorage.getItem('briscolaSicilianMode') === '1';
+    } catch (_) { return false; }
+  });
 
   useEffect(() => {
     if (gameState) {
@@ -300,6 +305,12 @@ export function ServerBoard({ gameState, players, playerID, gameConfig, userSess
       // Cleanup listeners if needed
     };
   }, []);
+
+  const displaySuit = (suit) => {
+    if (!sicilianMode) return suit;
+    const MAP = { 'Clubs': 'Bastoni', 'Hearts': 'Coppe', 'Diamonds': 'Denari', 'Spades': 'Spade' };
+    return MAP[suit] || suit;
+  };
 
   const handleCardClick = async (playerId, cardIndex) => {
     if (localGameState && localGameState.currentPlayer === playerId) {
@@ -433,7 +444,7 @@ export function ServerBoard({ gameState, players, playerID, gameConfig, userSess
         flexWrap: 'wrap'
       }}>
         <div style={{ flex: 1, minWidth: '150px' }}>
-          <strong>Trump:</strong> {localGameState.trumpSuit} | <strong>Deck:</strong> {localGameState.deck.length} cards
+          <strong>Trump:</strong> {displaySuit(localGameState.trumpSuit)} | <strong>Deck:</strong> {localGameState.deck.length} cards
         </div>
         <div style={{ 
           display: 'flex', 
@@ -458,23 +469,43 @@ export function ServerBoard({ gameState, players, playerID, gameConfig, userSess
             ))
           )}
         </div>
+        <button
+          onClick={() => {
+            const next = !sicilianMode;
+            setSicilianMode(next);
+            try { localStorage.setItem('briscolaSicilianMode', next ? '1' : '0'); } catch (_){ }
+          }}
+          style={{
+            marginLeft: '10px',
+            padding: '6px 10px',
+            backgroundColor: sicilianMode ? '#ff6b35' : '#444',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer'
+          }}
+        >
+          {sicilianMode ? 'Sicilian On' : 'Sicilian Off'}
+        </button>
       </div>
 
       {/* Center Area - Deck and Played Cards */}
       <div style={{
         position: 'absolute',
         top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
+        left: localGameState.hands?.length === 2 ? '65%' : '50%',
+        transform: localGameState.hands?.length === 2 ? 'translate(-50%, -50%)' : 'translate(-50%, -50%)',
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: (localGameState.hands?.length === 2 ? 'row' : 'column'),
         alignItems: 'center',
-        zIndex: 50
+        gap: localGameState.hands?.length === 2 ? '40px' : '0',
+        zIndex: 40
       }}>
         {/* Deck Display */}
         <div style={{
           position: 'relative',
-          marginBottom: '20px'
+          marginBottom: localGameState.hands?.length === 2 ? '0' : '20px',
+          order: localGameState.hands?.length === 2 ? 2 : 0
         }}>
           
           
@@ -491,7 +522,7 @@ export function ServerBoard({ gameState, players, playerID, gameConfig, userSess
             borderRadius: '6px',
             border: '2px solid #ff6b35',
             boxShadow: '0 6px 12px rgba(0,0,0,0.4)',
-            zIndex: 0
+            zIndex: 41
           }} />
 
            {/* Deck pile */}
