@@ -473,6 +473,9 @@ export function ServerBoard({ gameState, players, playerID, gameConfig, userSess
 
       {/* Center Area - Deck and Played Cards */}
       {(() => {
+        if (!localGameState || localGameState.deck.length === 0) {
+          return null; // Hide deck and trump card when stock is gone
+        }
         const isTwoPlayers = Array.isArray(localGameState.hands) && localGameState.hands.length === 2;
         const isShortHeight = window.innerHeight <= 540 || (window.innerWidth > window.innerHeight && window.innerHeight <= 600);
         const shouldDock = isShortHeight;
