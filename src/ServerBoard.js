@@ -22,16 +22,34 @@ const VALUE_MAPPING = {
   'K': 'K'
 };
 
-function Card({ card, onClick, isPlayable = false, isPlayed = false, isHidden = false }) {
-  const getCardImage = (card) => {
-    if (isHidden) {
-      return '/cards/cardBack.png';
-    }
-    
-    const suit = SUIT_MAPPING[card.suit];
-    const value = VALUE_MAPPING[card.value];
-    return `/cards/card${suit}${value}.png`;
-  };
+// Map logical card value to asset value for Sicilian or Standard decks
+function mapAssetValue(value, sicilian) {
+  if (!sicilian) {
+    return VALUE_MAPPING[value] || value;
+  }
+  // Sicilian deck uses 1,2,3,4,5,6,7,F (Fante), C (Cavallo), R (Re)
+  const MAP = { 'A': '1', 'J': 'F', 'Q': 'C', 'K': 'R' };
+  if (MAP[value]) return MAP[value];
+  return value; // 2-7 unchanged
+}
+
+function getCardImagePath(card, sicilian, isHidden) {
+  if (isHidden) {
+    return sicilian ? '/cards/Sicillian/cardBack.png' : '/cards/cardBack.png';
+  }
+  const standardSuit = SUIT_MAPPING[card.suit];
+  const suit = (function mapAssetSuit(suit, isSicilian) {
+    if (!isSicilian) return suit;
+    const MAP = { 'Clubs': 'Clubs', 'Hearts': 'Cups', 'Diamonds': 'Coins', 'Spades': 'Swords' };
+    return MAP[suit] || suit;
+  })(standardSuit, sicilian);
+  const value = mapAssetValue(card.value, sicilian);
+  const base = sicilian ? '/cards/Sicillian' : '/cards';
+  return `${base}/card${suit}${value}.png`;
+}
+
+function Card({ card, onClick, isPlayable = false, isPlayed = false, isHidden = false, sicilianMode = false }) {
+  const getCardImage = (card) => getCardImagePath(card, sicilianMode, isHidden);
 
   const cardStyle = {
     width: window.innerWidth < 768 ? '50px' : '60px',
@@ -75,7 +93,7 @@ function Card({ card, onClick, isPlayable = false, isPlayed = false, isHidden = 
   );
 }
 
-function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick }) {
+function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick, sicilianMode }) {
   const isCurrentPlayerTurn = currentPlayer === player.playerId;
   const isOwnPlayer = player.playerId === playerID;
   const playerHand = gameState.hands[player.playerId] || [];
@@ -94,46 +112,7 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
 
   const position = getPlayerPosition(player.playerId);
   
-  const getPlayerStyle = (pos) => {
-    const isMobile = window.innerWidth < 768;
-    const baseStyle = {
-      position: 'absolute',
-      display: 'flex',
-      flexDirection: pos === 'top' || pos === 'bottom' ? 'column' : (isMobile ? 'column' : 'row'),
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '10px',
-      backgroundColor: isCurrentPlayerTurn ? 'rgba(33, 150, 243, 0.3)' : 'rgba(0, 0, 0, 0.2)',
-      borderRadius: '8px',
-      border: isCurrentPlayerTurn ? '2px solid #2196F3' : '1px solid rgba(255, 255, 255, 0.3)',
-      zIndex: pos === 'top' ? 50 : 10
-    };
-
-    switch (pos) {
-      case 'top':
-        return { ...baseStyle, top: '60px', left: '50%', transform: 'translateX(-50%)' };
-      case 'right':
-        return { 
-          ...baseStyle, 
-          right: '10px', 
-          top: '50%', 
-          transform: 'translateY(-50%)',
-          flexDirection: isMobile ? 'column' : 'row'
-        };
-      case 'bottom':
-        return { ...baseStyle, bottom: '10px', left: '50%', transform: 'translateX(-50%)' };
-      case 'left':
-        return { 
-          ...baseStyle, 
-          left: '10px', 
-          top: '50%', 
-          transform: 'translateY(-50%)',
-          flexDirection: isMobile ? 'column' : 'row'
-        };
-      default:
-        return baseStyle;
-    }
-  };
+  // (removed unused getPlayerStyle)
 
   // Determine flex direction based on player position
   const getFlexDirection = () => {
@@ -235,6 +214,7 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
               onClick={() => onCardClick(player.playerId, index)}
               isPlayable={isCurrentPlayerTurn && isOwnPlayer}
               isHidden={!isOwnPlayer}
+              sicilianMode={sicilianMode}
             />
           ))}
         </div>
@@ -261,6 +241,7 @@ function PlayerArea({ player, gameState, currentPlayer, playerID, onCardClick })
             card={playedCard}
             isPlayed={true}
             isHidden={false}
+            sicilianMode={sicilianMode}
           />
         </div>
       )}
@@ -542,7 +523,7 @@ export function ServerBoard({ gameState, players, playerID, gameConfig, userSess
             transform: 'translateX(-50%)',
             width: window.innerWidth < 768 ? '45px' : '60px',
             height: window.innerWidth < 768 ? '68px' : '90px',
-            backgroundImage: `url(/cards/card${SUIT_MAPPING[localGameState.trumpCard.suit]}${VALUE_MAPPING[localGameState.trumpCard.value]}.png)`,
+            backgroundImage: `url(${getCardImagePath(localGameState.trumpCard, sicilianMode, false)})`,
             backgroundSize: 'cover',
             borderRadius: '6px',
             border: '2px solid #ff6b35',
@@ -554,7 +535,7 @@ export function ServerBoard({ gameState, players, playerID, gameConfig, userSess
             <div style={{
               width: window.innerWidth < 768 ? '50px' : '66px',
               height: window.innerWidth < 768 ? '68px' : '90px',
-              backgroundImage: 'url(/cards/cardBack.png)',
+              backgroundImage: `url(${sicilianMode ? '/cards/Sicillian/cardBack.png' : '/cards/cardBack.png'})`,
               backgroundSize: 'cover',
               borderRadius: '2px',
               border: '2px solid #333',
@@ -578,6 +559,7 @@ export function ServerBoard({ gameState, players, playerID, gameConfig, userSess
           currentPlayer={localGameState.currentPlayer}
           playerID={playerID}
           onCardClick={handleCardClick}
+          sicilianMode={sicilianMode}
         />
       ))}
 
