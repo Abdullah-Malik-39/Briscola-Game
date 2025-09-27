@@ -7,6 +7,7 @@ class SocketService {
     this.gameCode = null;
     this.playerName = null;
     this.isHost = false;
+    this._pushRegisteredFor = null;
   }
 
   connect() {
@@ -54,7 +55,12 @@ class SocketService {
         gameCode
       });
 
-      this.socket.once('gameCreated', (data) => {
+      this.socket.once('gameCreated', async (data) => {
+        try {
+          await this._ensurePushRegistered(playerName);
+        } catch (e) {
+          console.warn('Push registration failed on create:', e);
+        }
         resolve(data);
       });
 
@@ -84,9 +90,14 @@ class SocketService {
         gameCode: (gameCode || this.gameCode)
       });
 
-      this.socket.once('gameJoined', (data) => {
+      this.socket.once('gameJoined', async (data) => {
         console.log('Received gameJoined event:', data);
         if (data?.gameCode) this.gameCode = data.gameCode; // persist code from server
+        try {
+          await this._ensurePushRegistered(playerName);
+        } catch (e) {
+          console.warn('Push registration failed on join:', e);
+        }
         resolve(data);
       });
 
@@ -273,6 +284,60 @@ class SocketService {
       console.error('Error making offline move:', error);
       throw error;
     }
+  }
+
+  // Internal: register service worker and push subscription
+  async _ensurePushRegistered(currentPlayerName) {
+    try {
+      if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      const playerName = currentPlayerName || this.playerName;
+      if (!playerName) return;
+      if (this._pushRegisteredFor && this._pushRegisteredFor === playerName) return;
+
+      // Register SW
+      const swReg = await navigator.serviceWorker.register('/briscola-sw.js');
+      await navigator.serviceWorker.ready;
+
+      // Fetch public VAPID key from backend (dev: swap 3000 -> 3001)
+      const rawAPI = process.env.REACT_APP_API_URL || (typeof window !== 'undefined' ? `${window.location.origin}` : '');
+      const API = rawAPI.endsWith(':3000') ? rawAPI.replace(':3000', ':3001') : rawAPI;
+      const resp = await fetch(`${API}/api/push/public-key`);
+      if (!resp.ok) {
+        console.warn('Push public key not available (server not configured).');
+        return;
+      }
+      const { publicKey } = await resp.json();
+      const applicationServerKey = this._urlBase64ToUint8Array(publicKey);
+
+      // Request permission
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') return;
+
+      // Subscribe
+      const subscription = await swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+
+      // Send to server
+      await fetch(`${API}/api/push-subscriptions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerName, subscription })
+      });
+
+      this._pushRegisteredFor = playerName;
+    } catch (err) {
+      console.warn('Push registration error:', err);
+    }
+  }
+
+  _urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
   }
 
   disconnect() {

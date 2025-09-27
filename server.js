@@ -1,9 +1,11 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const webPush = require('web-push');
 function normalizeName(name) { return (name || '').trim().toLowerCase(); }
 
 // Ensure a proper Map for players when loading from persisted JSON
@@ -110,10 +112,15 @@ const players = new Map(); // socketId -> playerInfo
 
 // User-to-game mapping for single game per user
 const userGames = new Map(); // normalized playerName -> gameCode
+const playerSubscriptions = new Map(); // normalized playerName -> push subscription JSON
 
 // Persistent game storage (in production, use a database)
 const persistentGames = new Map(); // gameCode -> persistentGameData
 const PERSISTENT_STORAGE_FILE = process.env.PERSISTENT_STORAGE_FILE || 'persistent_games.json';
+const PUSH_VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || process.env.PUSH_VAPID_PUBLIC_KEY;
+const PUSH_VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || process.env.PUSH_VAPID_PRIVATE_KEY;
+const PUSH_CONTACT_EMAIL = process.env.PUSH_CONTACT_EMAIL || 'mailto:alerts@example.com';
+const PUSH_SUBSCRIPTIONS_FILE = process.env.PUSH_SUBSCRIPTIONS_FILE || 'push_subscriptions.json';
 
 // Load persistent games from file on startup
 function loadPersistentGamesFromFile() {
@@ -131,6 +138,32 @@ function loadPersistentGamesFromFile() {
   }
 }
 
+function loadPushSubscriptionsFromFile() {
+  if (!fs.existsSync(PUSH_SUBSCRIPTIONS_FILE)) {
+    return;
+  }
+  try {
+    const data = fs.readFileSync(PUSH_SUBSCRIPTIONS_FILE, 'utf8');
+    const parsed = JSON.parse(data);
+    Object.entries(parsed).forEach(([name, subscription]) => {
+      playerSubscriptions.set(name, subscription);
+    });
+    console.log(`Loaded ${playerSubscriptions.size} push subscriptions from file`);
+  } catch (error) {
+    console.error('Error loading push subscriptions:', error);
+  }
+}
+
+function savePushSubscriptionsToFile() {
+  try {
+    const data = Object.fromEntries(playerSubscriptions);
+    fs.writeFileSync(PUSH_SUBSCRIPTIONS_FILE, JSON.stringify(data, null, 2));
+    console.log(`Saved ${playerSubscriptions.size} push subscriptions to file`);
+  } catch (error) {
+    console.error('Error saving push subscriptions:', error);
+  }
+}
+
 // Save persistent games to file
 function savePersistentGamesToFile() {
   try {
@@ -144,6 +177,17 @@ function savePersistentGamesToFile() {
 
 // Load persistent games on startup
 loadPersistentGamesFromFile();
+loadPushSubscriptionsFromFile();
+
+if (PUSH_VAPID_PUBLIC_KEY && PUSH_VAPID_PRIVATE_KEY) {
+  try {
+    webPush.setVapidDetails(PUSH_CONTACT_EMAIL, PUSH_VAPID_PUBLIC_KEY, PUSH_VAPID_PRIVATE_KEY);
+  } catch (error) {
+    console.error('Failed to configure VAPID keys for push notifications:', error);
+  }
+} else {
+  console.warn('VAPID keys missing; push notifications disabled until keys are provided.');
+}
 
 // Save game state persistently
 function saveGameState(gameCode, gameState) {
@@ -162,6 +206,43 @@ function saveGameState(gameCode, gameState) {
   savePersistentGamesToFile();
   
   console.log(`Saved persistent game state for ${gameCode} with complete game data`);
+}
+
+function sendPushNotification(playerName, payload) {
+  if (!PUSH_VAPID_PUBLIC_KEY || !PUSH_VAPID_PRIVATE_KEY) {
+    return;
+  }
+  const normalized = normalizeName(playerName);
+  const subscription = playerSubscriptions.get(normalized);
+  if (!subscription) {
+    return;
+  }
+  try {
+    webPush.sendNotification(subscription, JSON.stringify(payload)).catch((error) => {
+      console.error(`Push notification failed for ${playerName}:`, error.message);
+    });
+  } catch (error) {
+    console.error(`Unexpected push notification error for ${playerName}:`, error);
+  }
+}
+
+// Fire-and-forget push to all players except the mover. Pure side-effect, no game mutations.
+function notifyGamePlayersOfUpdate(gameState, moverName, gameCode, move, args) {
+  try {
+    const playersList = getPlayersListForClient(gameState) || [];
+    const exclude = normalizeName(moverName || '');
+    playersList
+      .filter(p => p && p.playerName && normalizeName(p.playerName) !== exclude)
+      .forEach(p => {
+        sendPushNotification(p.playerName, {
+          title: 'Game updated',
+          body: moverName ? `${moverName} made a move` : 'A move was made',
+          data: { gameCode, move }
+        });
+      });
+  } catch (err) {
+    console.warn('notifyGamePlayersOfUpdate error:', err && err.message ? err.message : err);
+  }
 }
 
 // Load game state from persistent storage
@@ -408,6 +489,16 @@ io.on('connection', (socket) => {
   gameState.registeredPlayers = [
     { playerName, playerId: 0, lastKnownSocketId: socket.id, isHost: true }
   ];
+
+  // Auto-register push subscription if provided during create
+  if (data.subscription) {
+    try {
+      playerSubscriptions.set(normalizeName(playerName), data.subscription);
+      savePushSubscriptionsToFile();
+    } catch (error) {
+      console.error('Failed to save push subscription on create:', error);
+    }
+  }
     
     // Join room
     socket.join(gameCode);
@@ -430,6 +521,15 @@ io.on('connection', (socket) => {
     console.log('Server received joinGame event:', data);
     const { playerName, gameCode } = data;
     
+  if (data.subscription) {
+    try {
+      playerSubscriptions.set(normalizeName(playerName), data.subscription);
+      savePushSubscriptionsToFile();
+    } catch (error) {
+      console.error('Failed to save push subscription on join:', error);
+    }
+  }
+
     // Check if user already has a different game; if so, override/cleanup previous mapping
     const normalizedName = normalizeName(playerName);
     const userCurrentGame = userGames.get(normalizedName);
@@ -979,10 +1079,11 @@ io.on('connection', (socket) => {
       // Defer drawing cards until the trick is complete and a winner is known
       
       // If this completes a trick, determine winner and update scores
-      if (game.currentTrick.length === gameState.players.size) {
+      const seatsForTrick = Array.isArray(game.hands) ? game.hands.length : gameState.players.size;
+      if (game.currentTrick.length === seatsForTrick) {
         // First, broadcast the current state so everyone can see the last card played
         console.log('Trick completed, showing cards before scoring...');
-        io.to(gameCode).emit('gameStateUpdate', {
+        const updatePayload = {
           gameState: game,
           lastMove: {
             playerId,
@@ -990,8 +1091,10 @@ io.on('connection', (socket) => {
             args
           },
           trickComplete: true // Flag to indicate trick is complete but scores not yet updated
-        });
-        
+        };
+        io.to(gameCode).emit('gameStateUpdate', updatePayload);
+        // No push here to avoid double-notifications; final will send after scoring
+
         // Add delay before processing the trick completion
         setTimeout(() => {
           // Guard: if a player disconnected during the delay, ensure seating/arrays are still consistent
@@ -1059,21 +1162,24 @@ io.on('connection', (socket) => {
           
           // Broadcast the final state with updated scores
           console.log('Broadcasting final trick completion with updated scores');
-          io.to(gameCode).emit('gameStateUpdate', {
+          const finalPayload = {
             gameState: game,
             lastMove: {
               playerId,
               move,
               args
             },
-            trickComplete: false // Flag to indicate scores are now updated
-          });
+            trickComplete: false
+          };
+          io.to(gameCode).emit('gameStateUpdate', finalPayload);
+          notifyGamePlayersOfUpdate(gameState, playerInfo.playerName, gameCode, move, args);
         }, 2000); // 2 second delay
         
         return; // Don't broadcast immediately, wait for timeout
       } else {
         // Next player's turn
-        game.currentPlayer = (game.currentPlayer + 1) % gameState.players.size;
+        const seats = Array.isArray(game.hands) ? game.hands.length : gameState.players.size;
+        game.currentPlayer = (game.currentPlayer + 1) % seats;
       }
     }
     
@@ -1086,14 +1192,16 @@ io.on('connection', (socket) => {
       console.log('Game state hands:', game.hands);
       console.log('Game state deck length:', game.deck.length);
       
-      io.to(gameCode).emit('gameStateUpdate', {
+      const updatePayload = {
         gameState: game,
         lastMove: {
           playerId,
           move,
           args
         }
-      });
+      };
+      io.to(gameCode).emit('gameStateUpdate', updatePayload);
+      notifyGamePlayersOfUpdate(gameState, playerInfo.playerName, gameCode, move, args);
     }
   });
 
@@ -1105,30 +1213,27 @@ io.on('connection', (socket) => {
     if (playerInfo) {
       const gameState = games.get(playerInfo.gameCode);
       if (gameState) {
-        // Check if this is the last player BEFORE deleting
         const isLastPlayer = gameState.players.size === 1;
-        
-        // If this is the last player, save game state before deleting
+
         if (isLastPlayer && gameState.gameState) {
           console.log(`Last player disconnecting, saving game state with all players...`);
           saveGameState(playerInfo.gameCode, gameState);
         }
-        
+
         gameState.players.delete(socket.id);
-        
-        // If host disconnected, assign new host
+        updateRosterLastKnownSocket(gameState, playerInfo.playerName, null);
+
         if (playerInfo.isHost && gameState.players.size > 0) {
           const newHost = Array.from(gameState.players.values())[0];
-          newHost.isHost = true;
-          
-          io.to(playerInfo.gameCode).emit('hostChanged', {
-            newHost: newHost.playerName
-          });
+          if (newHost) {
+            newHost.isHost = true;
+            io.to(playerInfo.gameCode).emit('hostChanged', {
+              newHost: newHost.playerName
+            });
+          }
         }
-        
-        // If no players left, move to persistent storage
+
         if (gameState.players.size === 0) {
-          // Save game state to persistent storage before removing from active games
           if (gameState.gameState) {
             saveGameState(playerInfo.gameCode, gameState);
             console.log(`Game ${playerInfo.gameCode} saved to persistent storage before removal`);
@@ -1136,7 +1241,6 @@ io.on('connection', (socket) => {
           games.delete(playerInfo.gameCode);
           console.log(`Game ${playerInfo.gameCode} moved to persistent storage - no active players`);
         } else {
-          // Notify remaining players
           io.to(playerInfo.gameCode).emit('playerLeft', {
             playerName: playerInfo.playerName,
             playerCount: gameState.players.size
@@ -1288,6 +1392,35 @@ app.get('/api/user/:socketId/games', (req, res) => {
   res.json({ games: userGames });
 });
 
+app.get('/api/push/public-key', (req, res) => {
+  if (!PUSH_VAPID_PUBLIC_KEY) {
+    return res.status(503).json({ error: 'Push notifications not configured' });
+  }
+  res.json({ publicKey: PUSH_VAPID_PUBLIC_KEY });
+});
+
+app.post('/api/push-subscriptions', (req, res) => {
+  const { playerName, subscription } = req.body || {};
+  if (!playerName || !subscription) {
+    return res.status(400).json({ error: 'playerName and subscription are required' });
+  }
+  const normalizedName = normalizeName(playerName);
+  playerSubscriptions.set(normalizedName, subscription);
+  savePushSubscriptionsToFile();
+  console.log(`Registered push subscription for ${playerName}`);
+  res.json({ success: true });
+});
+
+app.delete('/api/push-subscriptions/:playerName', (req, res) => {
+  const { playerName } = req.params;
+  const normalizedName = normalizeName(playerName);
+  if (playerSubscriptions.delete(normalizedName)) {
+    savePushSubscriptionsToFile();
+    console.log(`Deleted push subscription for ${playerName}`);
+  }
+  res.json({ success: true });
+});
+
 // Check for user's active games by player name
 app.get('/api/user/name/:playerName/games', (req, res) => {
   const { playerName } = req.params;
@@ -1387,14 +1520,85 @@ app.post('/api/games/:gameCode/move', (req, res) => {
   }
   
   try {
-    // Make the move using the game logic
+    // Make the move using the same validation/logic as the online pathnavigator.serviceWorker.ready.then(r => r.pushManager.getSubscription()).then(s => console.log(!!s))
     const game = gameState.gameState;
     if (!game) {
       return res.status(400).json({ error: 'Game not started' });
     }
-    
-    // Apply the move
-    game.move(game, { playerID: playerId, move, args });
+
+    const pid = Number(playerId);
+    const seats = Array.isArray(game.hands) ? game.hands.length : gameState.players.size;
+    if (game.currentPlayer !== pid) {
+      return res.status(400).json({ error: 'Not your turn' });
+    }
+
+    const cardIndex = Array.isArray(args)
+      ? args[0]
+      : (args && typeof args.cardIndex === 'number' ? args.cardIndex : -1);
+    const playerHand = game.hands[pid];
+    if (cardIndex < 0 || cardIndex >= playerHand.length) {
+      return res.status(400).json({ error: 'Invalid card index' });
+    }
+
+    if (game.currentTrick.length >= seats) {
+      return res.status(400).json({ error: 'Trick already complete' });
+    }
+
+    // Play the card (no side-effects beyond minimal state change)
+    const playedCard = playerHand.splice(cardIndex, 1)[0];
+    game.currentTrick.push({ ...playedCard, player: pid });
+    game.playedCards.push(playedCard);
+
+    const seatsForTrick = seats;
+    if (game.currentTrick.length === seatsForTrick) {
+      // Resolve trick immediately (no delay for offline HTTP path)
+      const winningCard = getWinningCard(game.currentTrick, game.trumpSuit);
+      const winningPlayer = game.currentTrick.find(card =>
+        card.suit === winningCard.suit && card.value === winningCard.value
+      ).player;
+
+      game.trickWinner = winningPlayer;
+      const trickPoints = calculateTeamPoints(game.currentTrick);
+      game.scores[winningPlayer] += trickPoints;
+
+      // Update team scores for 4-player mode
+      if (game.gameMode === 'teams' && game.teams[winningPlayer]) {
+        const team = game.teams[winningPlayer];
+        const teamIndex = team === 'team1' ? 0 : 1;
+        game.teamScores[teamIndex] += trickPoints;
+      }
+
+      // Clear current trick
+      game.currentTrick = [];
+
+      // Deal cards in deterministic order starting from trick winner
+      const seatsCount = Array.isArray(game.hands) ? game.hands.length : 0;
+      if (seatsCount > 0) {
+        for (let offset = 0; offset < seatsCount; offset++) {
+          const drawPid = (winningPlayer + offset) % seatsCount;
+          if (game.deck.length > 0) {
+            const drawn = game.deck.pop();
+            game.hands[drawPid].push(drawn);
+          } else if (!game.trumpTaken && offset === seatsCount - 1) {
+            game.hands[drawPid].push(game.trumpCard);
+            game.trumpTaken = true;
+          }
+        }
+      }
+
+      // Check if game is over
+      const totalCardsPlayed = game.playedCards.length;
+      const totalCards = 40;
+      if (totalCardsPlayed >= totalCards) {
+        game.gamePhase = 'finished';
+      }
+
+      // Next player leads
+      game.currentPlayer = winningPlayer;
+    } else {
+      // Next player's turn
+      game.currentPlayer = (game.currentPlayer + 1) % seats;
+    }
     
     // Save the updated game state
     saveGameState(gameCode, gameState);
@@ -1405,6 +1609,28 @@ app.post('/api/games/:gameCode/move', (req, res) => {
     }
     
     console.log(`Offline move made: Player ${playerId} made move ${move} in game ${gameCode}`);
+
+    // Send push notifications to other players in this game
+    try {
+      const moverName = player.playerName;
+      const allPlayers = getPlayersListForClient(gameState) || [];
+      allPlayers
+        .filter(p => normalizeName(p.playerName) !== normalizeName(moverName))
+        .forEach(p => {
+          sendPushNotification(p.playerName, {
+            title: 'Your Briscola game updated',
+            body: `${moverName} played a move in game ${gameCode}`,
+            data: {
+              url: '/',
+              gameCode,
+              move,
+              playerId,
+            }
+          });
+        });
+    } catch (notifyErr) {
+      console.warn('Push notification dispatch failed:', notifyErr?.message || notifyErr);
+    }
     
     res.json({
       success: true,

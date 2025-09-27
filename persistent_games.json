@@ -1,111 +1,39 @@
 {
-  "718208": {
-    "gameCode": "718208",
+  "487399": {
+    "gameCode": "487399",
     "gameState": {
-      "gameCode": "718208",
-      "hostSocketId": "ZkuHweMKZogN-v3NAAAK",
+      "gameCode": "487399",
+      "hostSocketId": "mnmYAVKRWROJWGRkAAAP",
       "gameMode": "2player",
       "players": {},
       "registeredPlayers": [
         {
-          "playerName": "Testing chrome",
+          "playerName": "sdMalik",
           "playerId": 0,
           "isHost": true,
-          "lastKnownSocketId": "9T59CL63XIlDB4LrAAAi"
+          "lastKnownSocketId": null
         },
         {
-          "playerName": "sdMalik",
+          "playerName": "Testing chrome",
           "playerId": 1,
           "isHost": false,
-          "lastKnownSocketId": "Y7D217Aurm-Z8W_ZAAAo"
+          "lastKnownSocketId": null
         }
       ],
       "gameStarted": true,
       "gameState": {
         "deck": [
           {
-            "suit": "Spades",
+            "suit": "Clubs",
             "value": "Q",
             "points": 3,
-            "id": "Spades-Q"
-          },
-          {
-            "suit": "Diamonds",
-            "value": "7",
-            "points": 0,
-            "id": "Diamonds-7"
+            "id": "Clubs-Q"
           },
           {
             "suit": "Clubs",
-            "value": "5",
-            "points": 0,
-            "id": "Clubs-5"
-          },
-          {
-            "suit": "Hearts",
-            "value": "5",
-            "points": 0,
-            "id": "Hearts-5"
-          },
-          {
-            "suit": "Diamonds",
-            "value": "5",
-            "points": 0,
-            "id": "Diamonds-5"
-          },
-          {
-            "suit": "Diamonds",
-            "value": "3",
-            "points": 10,
-            "id": "Diamonds-3"
-          },
-          {
-            "suit": "Hearts",
-            "value": "7",
-            "points": 0,
-            "id": "Hearts-7"
-          },
-          {
-            "suit": "Diamonds",
-            "value": "6",
-            "points": 0,
-            "id": "Diamonds-6"
-          },
-          {
-            "suit": "Clubs",
-            "value": "6",
-            "points": 0,
-            "id": "Clubs-6"
-          },
-          {
-            "suit": "Diamonds",
-            "value": "K",
-            "points": 4,
-            "id": "Diamonds-K"
-          },
-          {
-            "suit": "Hearts",
-            "value": "Q",
-            "points": 3,
-            "id": "Hearts-Q"
-          },
-          {
-            "suit": "Clubs",
-            "value": "J",
-            "points": 2,
-            "id": "Clubs-J"
-          },
-          {
-            "suit": "Diamonds",
             "value": "4",
             "points": 0,
-            "id": "Diamonds-4"
-          },
-          {
-            "suit": "Hearts",
-            "value": "2",
-            "points": 0,
-            "id": "Hearts-2"
+            "id": "Clubs-4"
           },
           {
             "suit": "Spades",
@@ -115,45 +43,21 @@
           },
           {
             "suit": "Hearts",
-            "value": "4",
+            "value": "2",
             "points": 0,
-            "id": "Hearts-4"
+            "id": "Hearts-2"
           },
           {
             "suit": "Spades",
-            "value": "3",
-            "points": 10,
-            "id": "Spades-3"
-          },
-          {
-            "suit": "Clubs",
-            "value": "Q",
-            "points": 3,
-            "id": "Clubs-Q"
+            "value": "6",
+            "points": 0,
+            "id": "Spades-6"
           },
           {
             "suit": "Hearts",
-            "value": "K",
-            "points": 4,
-            "id": "Hearts-K"
-          },
-          {
-            "suit": "Hearts",
-            "value": "J",
-            "points": 2,
-            "id": "Hearts-J"
-          },
-          {
-            "suit": "Spades",
             "value": "7",
             "points": 0,
-            "id": "Spades-7"
-          },
-          {
-            "suit": "Diamonds",
-            "value": "Q",
-            "points": 3,
-            "id": "Diamonds-Q"
+            "id": "Hearts-7"
           },
           {
             "suit": "Clubs",
@@ -163,45 +67,45 @@
           },
           {
             "suit": "Clubs",
-            "value": "A",
-            "points": 11,
-            "id": "Clubs-A"
+            "value": "J",
+            "points": 2,
+            "id": "Clubs-J"
           },
           {
             "suit": "Spades",
-            "value": "A",
-            "points": 11,
-            "id": "Spades-A"
+            "value": "5",
+            "points": 0,
+            "id": "Spades-5"
+          },
+          {
+            "suit": "Spades",
+            "value": "7",
+            "points": 0,
+            "id": "Spades-7"
           },
           {
             "suit": "Hearts",
-            "value": "3",
-            "points": 10,
-            "id": "Hearts-3"
-          },
-          {
-            "suit": "Diamonds",
-            "value": "A",
-            "points": 11,
-            "id": "Diamonds-A"
-          },
-          {
-            "suit": "Spades",
             "value": "6",
             "points": 0,
-            "id": "Spades-6"
+            "id": "Hearts-6"
           },
           {
-            "suit": "Spades",
+            "suit": "Hearts",
             "value": "K",
             "points": 4,
-            "id": "Spades-K"
+            "id": "Hearts-K"
+          },
+          {
+            "suit": "Hearts",
+            "value": "Q",
+            "points": 3,
+            "id": "Hearts-Q"
           },
           {
             "suit": "Diamonds",
-            "value": "J",
-            "points": 2,
-            "id": "Diamonds-J"
+            "value": "2",
+            "points": 0,
+            "id": "Diamonds-2"
           },
           {
             "suit": "Clubs",
@@ -210,200 +114,224 @@
             "id": "Clubs-3"
           },
           {
+            "suit": "Diamonds",
+            "value": "K",
+            "points": 4,
+            "id": "Diamonds-K"
+          },
+          {
+            "suit": "Spades",
+            "value": "3",
+            "points": 10,
+            "id": "Spades-3"
+          },
+          {
+            "suit": "Clubs",
+            "value": "K",
+            "points": 4,
+            "id": "Clubs-K"
+          },
+          {
+            "suit": "Clubs",
+            "value": "6",
+            "points": 0,
+            "id": "Clubs-6"
+          },
+          {
+            "suit": "Spades",
+            "value": "A",
+            "points": 11,
+            "id": "Spades-A"
+          },
+          {
+            "suit": "Diamonds",
+            "value": "Q",
+            "points": 3,
+            "id": "Diamonds-Q"
+          },
+          {
+            "suit": "Diamonds",
+            "value": "7",
+            "points": 0,
+            "id": "Diamonds-7"
+          },
+          {
+            "suit": "Hearts",
+            "value": "4",
+            "points": 0,
+            "id": "Hearts-4"
+          },
+          {
+            "suit": "Clubs",
+            "value": "5",
+            "points": 0,
+            "id": "Clubs-5"
+          },
+          {
             "suit": "Spades",
             "value": "4",
             "points": 0,
             "id": "Spades-4"
           },
           {
-            "suit": "Diamonds",
+            "suit": "Hearts",
+            "value": "A",
+            "points": 11,
+            "id": "Hearts-A"
+          },
+          {
+            "suit": "Hearts",
+            "value": "5",
+            "points": 0,
+            "id": "Hearts-5"
+          },
+          {
+            "suit": "Clubs",
             "value": "2",
             "points": 0,
-            "id": "Diamonds-2"
+            "id": "Clubs-2"
+          },
+          {
+            "suit": "Diamonds",
+            "value": "3",
+            "points": 10,
+            "id": "Diamonds-3"
           }
         ],
         "trumpCard": {
           "suit": "Spades",
-          "value": "J",
-          "points": 2,
-          "id": "Spades-J"
+          "value": "K",
+          "points": 4,
+          "id": "Spades-K"
         },
         "trumpSuit": "Spades",
         "hands": [
           [
             {
-              "suit": "Clubs",
-              "value": "2",
-              "points": 0,
-              "id": "Clubs-2"
+              "suit": "Diamonds",
+              "value": "J",
+              "points": 2,
+              "id": "Diamonds-J"
             },
             {
-              "suit": "Hearts",
-              "value": "A",
-              "points": 11,
-              "id": "Hearts-A"
+              "suit": "Diamonds",
+              "value": "6",
+              "points": 0,
+              "id": "Diamonds-6"
+            },
+            {
+              "suit": "Spades",
+              "value": "J",
+              "points": 2,
+              "id": "Spades-J"
             }
           ],
           [
             {
               "suit": "Clubs",
-              "value": "K",
-              "points": 4,
-              "id": "Clubs-K"
+              "value": "A",
+              "points": 11,
+              "id": "Clubs-A"
             },
             {
               "suit": "Spades",
-              "value": "5",
-              "points": 0,
-              "id": "Spades-5"
-            },
-            {
-              "suit": "Clubs",
-              "value": "4",
-              "points": 0,
-              "id": "Clubs-4"
+              "value": "Q",
+              "points": 3,
+              "id": "Spades-Q"
             }
           ]
         ],
         "currentTrick": [
           {
             "suit": "Hearts",
-            "value": "6",
-            "points": 0,
-            "id": "Hearts-6",
-            "player": 0
+            "value": "3",
+            "points": 10,
+            "id": "Hearts-3",
+            "player": 1
           }
         ],
         "playedCards": [
           {
-            "suit": "Hearts",
-            "value": "6",
+            "suit": "Diamonds",
+            "value": "5",
             "points": 0,
-            "id": "Hearts-6"
+            "id": "Diamonds-5"
+          },
+          {
+            "suit": "Hearts",
+            "value": "J",
+            "points": 2,
+            "id": "Hearts-J"
+          },
+          {
+            "suit": "Diamonds",
+            "value": "4",
+            "points": 0,
+            "id": "Diamonds-4"
+          },
+          {
+            "suit": "Diamonds",
+            "value": "A",
+            "points": 11,
+            "id": "Diamonds-A"
+          },
+          {
+            "suit": "Hearts",
+            "value": "3",
+            "points": 10,
+            "id": "Hearts-3"
           }
         ],
         "scores": [
-          0,
-          0
+          2,
+          11
         ],
         "teamScores": [
           0,
           0
         ],
-        "trickWinner": null,
+        "trickWinner": 1,
         "gamePhase": "playing",
-        "currentPlayer": 1,
+        "currentPlayer": 0,
         "playerNames": {
-          "0": "Testing chrome",
-          "1": "sdMalik"
+          "0": "sdMalik",
+          "1": "Testing chrome"
         },
         "teams": {},
         "gameMode": "2player",
         "trumpTaken": false
       },
-      "createdAt": 1758827175213
+      "createdAt": 1759013173243
     },
-    "lastUpdated": 1758827308698,
+    "lastUpdated": 1759013217449,
     "players": [],
     "registeredPlayers": [
       {
-        "playerName": "Testing chrome",
+        "playerName": "sdMalik",
         "playerId": 0,
         "isHost": true,
-        "lastKnownSocketId": "9T59CL63XIlDB4LrAAAi"
+        "lastKnownSocketId": null
       },
       {
-        "playerName": "sdMalik",
+        "playerName": "Testing chrome",
         "playerId": 1,
         "isHost": false,
-        "lastKnownSocketId": "Y7D217Aurm-Z8W_ZAAAo"
+        "lastKnownSocketId": null
       }
     ],
     "completeGameState": {
       "deck": [
         {
-          "suit": "Spades",
+          "suit": "Clubs",
           "value": "Q",
           "points": 3,
-          "id": "Spades-Q"
-        },
-        {
-          "suit": "Diamonds",
-          "value": "7",
-          "points": 0,
-          "id": "Diamonds-7"
+          "id": "Clubs-Q"
         },
         {
           "suit": "Clubs",
-          "value": "5",
-          "points": 0,
-          "id": "Clubs-5"
-        },
-        {
-          "suit": "Hearts",
-          "value": "5",
-          "points": 0,
-          "id": "Hearts-5"
-        },
-        {
-          "suit": "Diamonds",
-          "value": "5",
-          "points": 0,
-          "id": "Diamonds-5"
-        },
-        {
-          "suit": "Diamonds",
-          "value": "3",
-          "points": 10,
-          "id": "Diamonds-3"
-        },
-        {
-          "suit": "Hearts",
-          "value": "7",
-          "points": 0,
-          "id": "Hearts-7"
-        },
-        {
-          "suit": "Diamonds",
-          "value": "6",
-          "points": 0,
-          "id": "Diamonds-6"
-        },
-        {
-          "suit": "Clubs",
-          "value": "6",
-          "points": 0,
-          "id": "Clubs-6"
-        },
-        {
-          "suit": "Diamonds",
-          "value": "K",
-          "points": 4,
-          "id": "Diamonds-K"
-        },
-        {
-          "suit": "Hearts",
-          "value": "Q",
-          "points": 3,
-          "id": "Hearts-Q"
-        },
-        {
-          "suit": "Clubs",
-          "value": "J",
-          "points": 2,
-          "id": "Clubs-J"
-        },
-        {
-          "suit": "Diamonds",
           "value": "4",
           "points": 0,
-          "id": "Diamonds-4"
-        },
-        {
-          "suit": "Hearts",
-          "value": "2",
-          "points": 0,
-          "id": "Hearts-2"
+          "id": "Clubs-4"
         },
         {
           "suit": "Spades",
@@ -413,45 +341,21 @@
         },
         {
           "suit": "Hearts",
-          "value": "4",
+          "value": "2",
           "points": 0,
-          "id": "Hearts-4"
+          "id": "Hearts-2"
         },
         {
           "suit": "Spades",
-          "value": "3",
-          "points": 10,
-          "id": "Spades-3"
-        },
-        {
-          "suit": "Clubs",
-          "value": "Q",
-          "points": 3,
-          "id": "Clubs-Q"
+          "value": "6",
+          "points": 0,
+          "id": "Spades-6"
         },
         {
           "suit": "Hearts",
-          "value": "K",
-          "points": 4,
-          "id": "Hearts-K"
-        },
-        {
-          "suit": "Hearts",
-          "value": "J",
-          "points": 2,
-          "id": "Hearts-J"
-        },
-        {
-          "suit": "Spades",
           "value": "7",
           "points": 0,
-          "id": "Spades-7"
-        },
-        {
-          "suit": "Diamonds",
-          "value": "Q",
-          "points": 3,
-          "id": "Diamonds-Q"
+          "id": "Hearts-7"
         },
         {
           "suit": "Clubs",
@@ -461,45 +365,45 @@
         },
         {
           "suit": "Clubs",
-          "value": "A",
-          "points": 11,
-          "id": "Clubs-A"
+          "value": "J",
+          "points": 2,
+          "id": "Clubs-J"
         },
         {
           "suit": "Spades",
-          "value": "A",
-          "points": 11,
-          "id": "Spades-A"
+          "value": "5",
+          "points": 0,
+          "id": "Spades-5"
+        },
+        {
+          "suit": "Spades",
+          "value": "7",
+          "points": 0,
+          "id": "Spades-7"
         },
         {
           "suit": "Hearts",
-          "value": "3",
-          "points": 10,
-          "id": "Hearts-3"
-        },
-        {
-          "suit": "Diamonds",
-          "value": "A",
-          "points": 11,
-          "id": "Diamonds-A"
-        },
-        {
-          "suit": "Spades",
           "value": "6",
           "points": 0,
-          "id": "Spades-6"
+          "id": "Hearts-6"
         },
         {
-          "suit": "Spades",
+          "suit": "Hearts",
           "value": "K",
           "points": 4,
-          "id": "Spades-K"
+          "id": "Hearts-K"
+        },
+        {
+          "suit": "Hearts",
+          "value": "Q",
+          "points": 3,
+          "id": "Hearts-Q"
         },
         {
           "suit": "Diamonds",
-          "value": "J",
-          "points": 2,
-          "id": "Diamonds-J"
+          "value": "2",
+          "points": 0,
+          "id": "Diamonds-2"
         },
         {
           "suit": "Clubs",
@@ -508,92 +412,188 @@
           "id": "Clubs-3"
         },
         {
+          "suit": "Diamonds",
+          "value": "K",
+          "points": 4,
+          "id": "Diamonds-K"
+        },
+        {
+          "suit": "Spades",
+          "value": "3",
+          "points": 10,
+          "id": "Spades-3"
+        },
+        {
+          "suit": "Clubs",
+          "value": "K",
+          "points": 4,
+          "id": "Clubs-K"
+        },
+        {
+          "suit": "Clubs",
+          "value": "6",
+          "points": 0,
+          "id": "Clubs-6"
+        },
+        {
+          "suit": "Spades",
+          "value": "A",
+          "points": 11,
+          "id": "Spades-A"
+        },
+        {
+          "suit": "Diamonds",
+          "value": "Q",
+          "points": 3,
+          "id": "Diamonds-Q"
+        },
+        {
+          "suit": "Diamonds",
+          "value": "7",
+          "points": 0,
+          "id": "Diamonds-7"
+        },
+        {
+          "suit": "Hearts",
+          "value": "4",
+          "points": 0,
+          "id": "Hearts-4"
+        },
+        {
+          "suit": "Clubs",
+          "value": "5",
+          "points": 0,
+          "id": "Clubs-5"
+        },
+        {
           "suit": "Spades",
           "value": "4",
           "points": 0,
           "id": "Spades-4"
         },
         {
-          "suit": "Diamonds",
+          "suit": "Hearts",
+          "value": "A",
+          "points": 11,
+          "id": "Hearts-A"
+        },
+        {
+          "suit": "Hearts",
+          "value": "5",
+          "points": 0,
+          "id": "Hearts-5"
+        },
+        {
+          "suit": "Clubs",
           "value": "2",
           "points": 0,
-          "id": "Diamonds-2"
+          "id": "Clubs-2"
+        },
+        {
+          "suit": "Diamonds",
+          "value": "3",
+          "points": 10,
+          "id": "Diamonds-3"
         }
       ],
       "trumpCard": {
         "suit": "Spades",
-        "value": "J",
-        "points": 2,
-        "id": "Spades-J"
+        "value": "K",
+        "points": 4,
+        "id": "Spades-K"
       },
       "trumpSuit": "Spades",
       "hands": [
         [
           {
-            "suit": "Clubs",
-            "value": "2",
-            "points": 0,
-            "id": "Clubs-2"
+            "suit": "Diamonds",
+            "value": "J",
+            "points": 2,
+            "id": "Diamonds-J"
           },
           {
-            "suit": "Hearts",
-            "value": "A",
-            "points": 11,
-            "id": "Hearts-A"
+            "suit": "Diamonds",
+            "value": "6",
+            "points": 0,
+            "id": "Diamonds-6"
+          },
+          {
+            "suit": "Spades",
+            "value": "J",
+            "points": 2,
+            "id": "Spades-J"
           }
         ],
         [
           {
             "suit": "Clubs",
-            "value": "K",
-            "points": 4,
-            "id": "Clubs-K"
+            "value": "A",
+            "points": 11,
+            "id": "Clubs-A"
           },
           {
             "suit": "Spades",
-            "value": "5",
-            "points": 0,
-            "id": "Spades-5"
-          },
-          {
-            "suit": "Clubs",
-            "value": "4",
-            "points": 0,
-            "id": "Clubs-4"
+            "value": "Q",
+            "points": 3,
+            "id": "Spades-Q"
           }
         ]
       ],
       "currentTrick": [
         {
           "suit": "Hearts",
-          "value": "6",
-          "points": 0,
-          "id": "Hearts-6",
-          "player": 0
+          "value": "3",
+          "points": 10,
+          "id": "Hearts-3",
+          "player": 1
         }
       ],
       "playedCards": [
         {
-          "suit": "Hearts",
-          "value": "6",
+          "suit": "Diamonds",
+          "value": "5",
           "points": 0,
-          "id": "Hearts-6"
+          "id": "Diamonds-5"
+        },
+        {
+          "suit": "Hearts",
+          "value": "J",
+          "points": 2,
+          "id": "Hearts-J"
+        },
+        {
+          "suit": "Diamonds",
+          "value": "4",
+          "points": 0,
+          "id": "Diamonds-4"
+        },
+        {
+          "suit": "Diamonds",
+          "value": "A",
+          "points": 11,
+          "id": "Diamonds-A"
+        },
+        {
+          "suit": "Hearts",
+          "value": "3",
+          "points": 10,
+          "id": "Hearts-3"
         }
       ],
       "scores": [
-        0,
-        0
+        2,
+        11
       ],
       "teamScores": [
         0,
         0
       ],
-      "trickWinner": null,
+      "trickWinner": 1,
       "gamePhase": "playing",
-      "currentPlayer": 1,
+      "currentPlayer": 0,
       "playerNames": {
-        "0": "Testing chrome",
-        "1": "sdMalik"
+        "0": "sdMalik",
+        "1": "Testing chrome"
       },
       "teams": {},
       "gameMode": "2player",
